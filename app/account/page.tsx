@@ -1,73 +1,53 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
-import Link from "next/link";
-
-function periodNow() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  return `${y}-${m}`;
-}
+import AppShell from "@/app/_components/AppShell";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [email, setEmail] = useState<string | null>(null);
-  const [plan, setPlan] = useState("free");
-  const [limit, setLimit] = useState(0);
-  const [used, setUsed] = useState(0);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [name, setName] = useState<string | null>(null);
+  const [plan, setPlan] = useState<string>("free");
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      setMsg(null);
+    let unsub: any = null;
 
+    (async () => {
       const { data } = await supabase.auth.getSession();
-      const session = data.session;
-      if (!session) {
-        setLoading(false);
+      const user = data.session?.user;
+
+      if (!user) {
+        window.location.href = "/login";
         return;
       }
-      setEmail(session.user.email ?? null);
 
-      const { data: prof, error: profErr } = await supabase
+      const display =
+        (user.user_metadata?.full_name as string) ||
+        (user.user_metadata?.name as string) ||
+        (user.email ? user.email.split("@")[0] : "User");
+
+      setEmail(user.email ?? null);
+      setName(display);
+
+      // try to fetch plan from profiles table (optional; won’t crash if not set)
+      const { data: prof } = await supabase
         .from("profiles")
         .select("plan_id")
-        .eq("user_id", session.user.id)
-        .single();
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-      if (profErr) { setMsg(profErr.message); setLoading(false); return; }
-
-      const planId = prof?.plan_id ?? "free";
-      setPlan(planId);
-
-      const { data: planRow, error: planErr } = await supabase
-        .from("plans")
-        .select("monthly_words")
-        .eq("id", planId)
-        .single();
-
-      if (planErr) { setMsg(planErr.message); setLoading(false); return; }
-
-      const monthlyWords = planRow?.monthly_words ?? 0;
-      setLimit(monthlyWords);
-
-      const period = periodNow();
-      const { data: usageRows, error: usageErr } = await supabase
-        .from("usage_monthly")
-        .select("words_used")
-        .eq("user_id", session.user.id)
-        .eq("period", period);
-
-      if (usageErr) { setMsg(usageErr.message); setLoading(false); return; }
-
-      const totalUsed = (usageRows ?? []).reduce((s, r) => s + (r.words_used ?? 0), 0);
-      setUsed(totalUsed);
+      if (prof?.plan_id) setPlan(prof.plan_id);
 
       setLoading(false);
+
+      const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+        if (!session) window.location.href = "/login";
+      });
+      unsub = sub.subscription;
     })();
+
+    return () => unsub?.unsubscribe?.();
   }, []);
 
   async function logout() {
@@ -75,35 +55,77 @@ export default function AccountPage() {
     window.location.href = "/login";
   }
 
-  const remaining = Math.max(0, limit - used);
-
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
-      <div className="w-full max-w-xl space-y-4 border rounded-xl p-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold">Account</h1>
-          <div className="flex gap-2">
-            <Link className="px-3 py-2 rounded-lg border" href="/download">Download</Link>
-            <button className="px-3 py-2 rounded-lg bg-black text-white" onClick={logout}>Log out</button>
+    <AppShell>
+      <main className="px-10 py-10">
+        <div className="mb-8">
+          <div className="text-2xl font-semibold tracking-tight">Account</div>
+          <div className="mt-1 text-sm text-white/60">
+            Manage your AAI profile and subscription.
           </div>
         </div>
 
         {loading ? (
-          <div>Loading…</div>
-        ) : email ? (
-          <div className="space-y-2">
-            <div><span className="font-medium">Email:</span> {email}</div>
-            <div><span className="font-medium">Plan:</span> {plan}</div>
-            <div><span className="font-medium">Words remaining:</span> {remaining.toLocaleString()} / {limit.toLocaleString()}</div>
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-sm text-white/70">
+            Loading…
           </div>
         ) : (
-          <div>
-            You’re not logged in. <Link className="underline" href="/login">Log in</Link>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
+              <div className="text-sm font-medium">Profile</div>
+
+              <div className="mt-4 space-y-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <div className="text-white/60">Name</div>
+                  <div className="text-white/90">{name}</div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="text-white/60">Email</div>
+                  <div className="text-white/90">{email}</div>
+                </div>
+              </div>
+
+              <button
+                onClick={logout}
+                className="mt-6 w-full rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-black hover:opacity-90"
+              >
+                Log out
+              </button>
+            </section>
+
+            <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
+              <div className="text-sm font-medium">Subscription</div>
+
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4">
+                <div className="text-xs uppercase tracking-widest text-white/50">
+                  Current Plan
+                </div>
+                <div className="mt-1 text-lg font-semibold capitalize">
+                  {plan}
+                </div>
+                <div className="mt-2 text-sm text-white/60">
+                  Upgrade options will connect to your checkout later.
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <button
+                  onClick={() => window.open("https://google.com", "_blank")}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/85 hover:bg-white/10"
+                >
+                  Upgrade
+                </button>
+                <button
+                  onClick={() => window.open("https://google.com", "_blank")}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/85 hover:bg-white/10"
+                >
+                  Billing
+                </button>
+              </div>
+            </section>
           </div>
         )}
-
-        {msg && <div className="text-sm text-red-600">{msg}</div>}
-      </div>
-    </main>
+      </main>
+    </AppShell>
   );
 }
