@@ -1,5 +1,14 @@
-@import "tailwindcss";
+@import "tailwindcss/preflight";
+@tailwind utilities;
 
+/* Optional: your global styles below */
+:root {
+  color-scheme: light dark;
+}
+
+html, body {
+  height: 100%;
+}
 :root {
   --background: #ffffff;
   --foreground: #171717;
