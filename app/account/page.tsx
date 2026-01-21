@@ -61,7 +61,7 @@ export default function AccountPage() {
         <div className="mb-8">
           <div className="text-2xl font-semibold tracking-tight">Account</div>
           <div className="mt-1 text-sm text-white/60">
-            Manage your AAI profile and subscription.
+            Manage your Ghost Typer profile and subscription.
           </div>
         </div>
 

@@ -7,7 +7,7 @@ export default function DownloadPage() {
         <div className="mb-8">
           <div className="text-2xl font-semibold tracking-tight">Download Desktop</div>
           <div className="mt-1 text-sm text-white/60">
-            Get the AAI desktop typer (system-level typing).
+            Get the Ghost Typer.
           </div>
         </div>
 

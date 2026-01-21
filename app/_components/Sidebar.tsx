@@ -44,7 +44,7 @@ export default function Sidebar() {
     <aside className="w-[280px] shrink-0 border-r border-white/10 bg-black px-5 py-5">
       {/* Brand */}
       <div className="mb-6">
-        <div className="text-lg font-semibold tracking-tight text-white">AAI</div>
+        <div className="text-lg font-semibold tracking-tight text-white">Ghost</div>
         <div className="mt-1 text-xs text-white/50">Detect AI in text & images</div>
       </div>
 
@@ -70,7 +70,7 @@ export default function Sidebar() {
 
       {/* Footer */}
       <div className="mt-8 text-xs text-white/35">
-        © {new Date().getFullYear()} AAI
+        © {new Date().getFullYear()} Ghost
       </div>
     </aside>
   );

@@ -396,7 +396,7 @@ export default function Home() {
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
             <div className="text-sm font-medium">Desktop Typer</div>
             <div className="mt-2 text-sm text-white/60">
-              Download the AAI typer for system-level human typing.
+              Download the Ghost Typer for system-level human typing.
             </div>
             <Link
               href="/download"
