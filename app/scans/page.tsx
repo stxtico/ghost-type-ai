@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
+import { useSearchParams } from "next/navigation";
 
 type ScanRow = {
   id: string;
@@ -57,9 +58,7 @@ function ScanCard({
               </button>
             </div>
           ) : (
-            <div className="truncate text-lg font-semibold">
-              {scan.title || "Untitled"}
-            </div>
+            <div className="truncate text-lg font-semibold">{scan.title || "Untitled"}</div>
           )}
 
           <div className="mt-1 text-xs text-white/60">
@@ -90,26 +89,20 @@ function ScanCard({
         {scan.type === "text" ? (
           <div className="text-sm text-white/85">
             {scan.text_preview ? (
-              <div className="line-clamp-6 whitespace-pre-wrap">
-                {scan.text_preview}
-              </div>
+              <div className="line-clamp-6 whitespace-pre-wrap">{scan.text_preview}</div>
             ) : (
               <div className="text-white/40">No preview.</div>
             )}
           </div>
+        ) : scan.image_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={scan.image_url}
+            alt="scan"
+            className="max-h-56 w-full rounded-xl object-contain"
+          />
         ) : (
-          <div>
-            {scan.image_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={scan.image_url}
-                alt="scan"
-                className="max-h-56 w-full rounded-xl object-contain"
-              />
-            ) : (
-              <div className="text-sm text-white/40">No image preview.</div>
-            )}
-          </div>
+          <div className="text-sm text-white/40">No image preview.</div>
         )}
       </div>
     </div>
@@ -117,6 +110,9 @@ function ScanCard({
 }
 
 export default function SavedScansPage() {
+  const search = useSearchParams();
+  const filterType = search.get("type"); // "text" | "image" | null
+
   const [sessionReady, setSessionReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
 
@@ -124,11 +120,22 @@ export default function SavedScansPage() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  const filtered = useMemo(() => {
+    if (filterType === "text" || filterType === "image") {
+      return scans.filter((s) => s.type === filterType);
+    }
+    return scans;
+  }, [scans, filterType]);
+
   const placeholders = useMemo(() => {
-    // show 6 boxes total for layout
-    const missing = Math.max(0, 6 - scans.length);
+    const missing = Math.max(0, 6 - filtered.length);
     return Array.from({ length: missing });
-  }, [scans.length]);
+  }, [filtered.length]);
+
+  function loginRedirect() {
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.href = `/login?next=${next}`;
+  }
 
   async function loadScans() {
     setErr(null);
@@ -137,7 +144,7 @@ export default function SavedScansPage() {
       const { data } = await supabase.auth.getSession();
       const accessToken = data.session?.access_token;
       if (!accessToken) {
-        window.location.href = "/login";
+        loginRedirect();
         return;
       }
 
@@ -162,7 +169,7 @@ export default function SavedScansPage() {
       const { data } = await supabase.auth.getSession();
       const accessToken = data.session?.access_token;
       if (!accessToken) {
-        window.location.href = "/login";
+        loginRedirect();
         return;
       }
 
@@ -189,7 +196,7 @@ export default function SavedScansPage() {
       const { data } = await supabase.auth.getSession();
       const accessToken = data.session?.access_token;
       if (!accessToken) {
-        window.location.href = "/login";
+        loginRedirect();
         return;
       }
 
@@ -221,8 +228,7 @@ export default function SavedScansPage() {
       setSessionReady(true);
 
       if (!authed) {
-        // If guest hits /scans, send them to login
-        window.location.href = "/login";
+        loginRedirect();
         return;
       }
 
@@ -231,7 +237,7 @@ export default function SavedScansPage() {
       const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
         const nowAuthed = !!session;
         setIsAuthed(nowAuthed);
-        if (!nowAuthed) window.location.href = "/login";
+        if (!nowAuthed) loginRedirect();
         else await loadScans();
       });
 
@@ -242,15 +248,16 @@ export default function SavedScansPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const title =
+    filterType === "text" ? "Saved Text Scans" : filterType === "image" ? "Saved Image Scans" : "Saved Scans";
+
   return (
     <AppShell>
       <main className="px-10 py-8">
         <div className="mb-8 flex items-center justify-between gap-6">
           <div>
-            <div className="text-2xl font-semibold tracking-tight">Saved Scans</div>
-            <div className="mt-1 text-sm text-white/60">
-              Manage your saved text and image scans.
-            </div>
+            <div className="text-2xl font-semibold tracking-tight">{title}</div>
+            <div className="mt-1 text-sm text-white/60">Manage your saved scans.</div>
           </div>
 
           <button
@@ -269,11 +276,10 @@ export default function SavedScansPage() {
         )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {scans.map((scan) => (
+          {filtered.map((scan) => (
             <ScanCard key={scan.id} scan={scan} onRename={renameScan} onDelete={deleteScan} />
           ))}
 
-          {/* If none (or not enough), show dashed empty boxes */}
           {placeholders.map((_, i) => (
             <DashedCard key={`empty-${i}`} />
           ))}

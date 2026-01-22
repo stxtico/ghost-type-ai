@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 function NavButton({
   href,
@@ -29,13 +29,28 @@ function NavButton({
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className="mb-2 mt-6 text-xs font-semibold tracking-wide text-white/50">{children}</div>;
+  return (
+    <div className="mb-2 mt-6 text-xs font-semibold tracking-wide text-white/50">
+      {children}
+    </div>
+  );
 }
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const search = useSearchParams();
+  const scansType = search.get("type"); // "text" | "image" | null
 
   const isActive = (href: string) => {
+    // active checks for /scans?type=...
+    if (href.startsWith("/scans")) {
+      if (!pathname.startsWith("/scans")) return false;
+      const u = new URL(href, "http://x");
+      const t = u.searchParams.get("type");
+      if (!t) return pathname === "/scans";
+      return pathname.startsWith("/scans") && scansType === t;
+    }
+
     if (href === "/") return pathname === "/";
     return pathname === href || pathname.startsWith(href + "/");
   };
@@ -54,11 +69,11 @@ export default function Sidebar() {
       {/* Detect */}
       <SectionTitle>Text</SectionTitle>
       <NavButton href="/detect/text" label="New Text Scan" active={isActive("/detect/text")} />
-      <NavButton href="/detect/text/saved" label="Saved Text Scans" active={isActive("/detect/text/saved")} />
+      <NavButton href="/scans?type=text" label="Saved Text Scans" active={isActive("/scans?type=text")} />
 
       <SectionTitle>Image</SectionTitle>
       <NavButton href="/detect/image" label="New Image Scan" active={isActive("/detect/image")} />
-      <NavButton href="/detect/image/saved" label="Saved Image Scans" active={isActive("/detect/image/saved")} />
+      <NavButton href="/scans?type=image" label="Saved Image Scans" active={isActive("/scans?type=image")} />
 
       {/* Tools */}
       <SectionTitle>Tools</SectionTitle>
@@ -69,9 +84,7 @@ export default function Sidebar() {
       <NavButton href="/billing" label="Manage Subscription" active={isActive("/billing")} />
 
       {/* Footer */}
-      <div className="mt-8 text-xs text-white/35">
-        © {new Date().getFullYear()} Ghost
-      </div>
+      <div className="mt-8 text-xs text-white/35">© {new Date().getFullYear()} Ghost</div>
     </aside>
   );
 }
