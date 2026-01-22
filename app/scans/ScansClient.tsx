@@ -119,7 +119,7 @@ export default function ScansClient({ filterType }: { filterType: "text" | "imag
     return Array.from({ length: missing });
   }, [filtered.length]);
 
-  function loginRedirect() {
+  function goLogin() {
     const next = encodeURIComponent(window.location.pathname);
     window.location.href = `/login?next=${next}`;
   }
@@ -130,14 +130,17 @@ export default function ScansClient({ filterType }: { filterType: "text" | "imag
     try {
       const { data } = await supabase.auth.getSession();
       const accessToken = data.session?.access_token;
+
+      // IMPORTANT: no auto-redirect. Just stop and show the login-required UI.
       if (!accessToken) {
-        loginRedirect();
+        setScans([]);
         return;
       }
 
       const res = await fetch("/api/scans", {
         method: "GET",
         headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
       });
 
       const j = await res.json().catch(() => ({}));
@@ -155,7 +158,7 @@ export default function ScansClient({ filterType }: { filterType: "text" | "imag
     try {
       const { data } = await supabase.auth.getSession();
       const accessToken = data.session?.access_token;
-      if (!accessToken) return loginRedirect();
+      if (!accessToken) return goLogin();
 
       const res = await fetch("/api/scans", {
         method: "PATCH",
@@ -179,7 +182,7 @@ export default function ScansClient({ filterType }: { filterType: "text" | "imag
     try {
       const { data } = await supabase.auth.getSession();
       const accessToken = data.session?.access_token;
-      if (!accessToken) return loginRedirect();
+      if (!accessToken) return goLogin();
 
       const res = await fetch("/api/scans", {
         method: "DELETE",
@@ -204,22 +207,21 @@ export default function ScansClient({ filterType }: { filterType: "text" | "imag
 
     (async () => {
       const { data } = await supabase.auth.getSession();
-      const authed = !!data.session;
-      setIsAuthed(authed);
+      setIsAuthed(!!data.session);
       setSessionReady(true);
 
-      if (!authed) {
-        loginRedirect();
-        return;
-      }
-
-      await loadScans();
+      // Only load scans if authed. No redirect.
+      if (data.session) await loadScans();
 
       const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
         const nowAuthed = !!session;
         setIsAuthed(nowAuthed);
-        if (!nowAuthed) loginRedirect();
-        else await loadScans();
+
+        if (nowAuthed) await loadScans();
+        else {
+          setScans([]);
+          setErr(null);
+        }
       });
 
       unsub = sub.subscription;
@@ -230,6 +232,34 @@ export default function ScansClient({ filterType }: { filterType: "text" | "imag
   }, []);
 
   const title = filterType === "text" ? "Saved Text Scans" : "Saved Image Scans";
+
+  // ✅ Guest view (NO redirect -> no loop)
+  if (sessionReady && !isAuthed) {
+    return (
+      <AppShell>
+        <main className="px-10 py-8">
+          <div className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-6">
+            <div className="text-lg font-semibold">{title}</div>
+            <div className="mt-2 text-sm text-white/60">
+              You need to log in to view saved scans.
+            </div>
+            <button
+              onClick={goLogin}
+              className="mt-5 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-black hover:opacity-90"
+            >
+              Go to Login
+            </button>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <DashedCard key={`guest-empty-${i}`} />
+            ))}
+          </div>
+        </main>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>
