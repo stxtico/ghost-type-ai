@@ -1,47 +1,155 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
-import Link from "next/link";
 
 type ScanRow = {
   id: string;
-  kind: "text" | "image";
   title: string | null;
+  type: "text" | "image";
+  text_preview: string | null;
+  image_url: string | null;
   created_at: string;
-  preview_text: string | null;
-  preview_image_url: string | null;
 };
 
-export default function ScansPage() {
-  const [ready, setReady] = useState(false);
-  const [authed, setAuthed] = useState(false);
+function DashedCard() {
+  return (
+    <div className="rounded-3xl border border-dashed border-white/15 bg-white/[0.03] p-6">
+      <div className="h-4 w-24 rounded bg-white/10" />
+      <div className="mt-3 h-3 w-40 rounded bg-white/5" />
+      <div className="mt-6 h-24 rounded-2xl bg-white/5" />
+    </div>
+  );
+}
 
-  const [tab, setTab] = useState<"text" | "image">("text");
-  const [rows, setRows] = useState<ScanRow[]>([]);
+function ScanCard({
+  scan,
+  onRename,
+  onDelete,
+}: {
+  scan: ScanRow;
+  onRename: (id: string, nextTitle: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [title, setTitle] = useState(scan.title || "Untitled");
+
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          {editing ? (
+            <div className="flex items-center gap-2">
+              <input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full max-w-[240px] rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-white/25"
+              />
+              <button
+                onClick={() => {
+                  setEditing(false);
+                  onRename(scan.id, title.trim() || "Untitled");
+                }}
+                className="rounded-xl bg-white px-3 py-2 text-sm font-medium text-black hover:opacity-90"
+              >
+                Save
+              </button>
+            </div>
+          ) : (
+            <div className="truncate text-lg font-semibold">
+              {scan.title || "Untitled"}
+            </div>
+          )}
+
+          <div className="mt-1 text-xs text-white/60">
+            {scan.type === "text" ? "Text scan" : "Image scan"} •{" "}
+            {new Date(scan.created_at).toLocaleString()}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {!editing && (
+            <button
+              onClick={() => setEditing(true)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
+            >
+              Rename
+            </button>
+          )}
+          <button
+            onClick={() => onDelete(scan.id)}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-4">
+        {scan.type === "text" ? (
+          <div className="text-sm text-white/85">
+            {scan.text_preview ? (
+              <div className="line-clamp-6 whitespace-pre-wrap">
+                {scan.text_preview}
+              </div>
+            ) : (
+              <div className="text-white/40">No preview.</div>
+            )}
+          </div>
+        ) : (
+          <div>
+            {scan.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={scan.image_url}
+                alt="scan"
+                className="max-h-56 w-full rounded-xl object-contain"
+              />
+            ) : (
+              <div className="text-sm text-white/40">No image preview.</div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function SavedScansPage() {
+  const [sessionReady, setSessionReady] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(false);
+
+  const [scans, setScans] = useState<ScanRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  async function load(kind: "text" | "image") {
+  const placeholders = useMemo(() => {
+    // show 6 boxes total for layout
+    const missing = Math.max(0, 6 - scans.length);
+    return Array.from({ length: missing });
+  }, [scans.length]);
+
+  async function loadScans() {
     setErr(null);
     setLoading(true);
     try {
       const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) {
-        setAuthed(false);
+      const accessToken = data.session?.access_token;
+      if (!accessToken) {
         window.location.href = "/login";
         return;
       }
 
-      const res = await fetch(`/api/scans?kind=${kind}`, {
-        headers: { Authorization: `Bearer ${token}` },
+      const res = await fetch("/api/scans", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
+
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Request failed (${res.status})`);
 
-      setRows(Array.isArray(j.rows) ? j.rows : []);
+      setScans(Array.isArray(j.scans) ? j.scans : []);
     } catch (e: any) {
       setErr(e?.message || "Failed to load scans.");
     } finally {
@@ -49,131 +157,127 @@ export default function ScansPage() {
     }
   }
 
-  useEffect(() => {
-    (async () => {
+  async function renameScan(id: string, nextTitle: string) {
+    try {
       const { data } = await supabase.auth.getSession();
-      const ok = !!data.session;
-      setAuthed(ok);
-      setReady(true);
-      if (!ok) {
+      const accessToken = data.session?.access_token;
+      if (!accessToken) {
         window.location.href = "/login";
         return;
       }
-      await load(tab);
-    })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+      const res = await fetch("/api/scans", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ id, title: nextTitle }),
+      });
+
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || `Rename failed (${res.status})`);
+
+      setScans((prev) => prev.map((s) => (s.id === id ? { ...s, title: nextTitle } : s)));
+    } catch (e: any) {
+      setErr(e?.message || "Rename failed.");
+    }
+  }
+
+  async function deleteScan(id: string) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const accessToken = data.session?.access_token;
+      if (!accessToken) {
+        window.location.href = "/login";
+        return;
+      }
+
+      const res = await fetch("/api/scans", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ id }),
+      });
+
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j?.error || `Delete failed (${res.status})`);
+
+      setScans((prev) => prev.filter((s) => s.id !== id));
+    } catch (e: any) {
+      setErr(e?.message || "Delete failed.");
+    }
+  }
 
   useEffect(() => {
-    if (authed) load(tab);
+    let unsub: any = null;
+
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      const authed = !!data.session;
+      setIsAuthed(authed);
+      setSessionReady(true);
+
+      if (!authed) {
+        // If guest hits /scans, send them to login
+        window.location.href = "/login";
+        return;
+      }
+
+      await loadScans();
+
+      const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
+        const nowAuthed = !!session;
+        setIsAuthed(nowAuthed);
+        if (!nowAuthed) window.location.href = "/login";
+        else await loadScans();
+      });
+
+      unsub = sub.subscription;
+    })();
+
+    return () => unsub?.unsubscribe?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
+  }, []);
 
   return (
     <AppShell>
       <main className="px-10 py-8">
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-8 flex items-center justify-between gap-6">
           <div>
             <div className="text-2xl font-semibold tracking-tight">Saved Scans</div>
-            <div className="mt-1 text-sm text-white/60">Your saved text & image scans.</div>
+            <div className="mt-1 text-sm text-white/60">
+              Manage your saved text and image scans.
+            </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setTab("text")}
-              className={`rounded-xl border px-4 py-2 text-sm ${
-                tab === "text"
-                  ? "border-white/20 bg-white/10"
-                  : "border-white/10 bg-white/5 hover:bg-white/10"
-              }`}
-            >
-              Text
-            </button>
-            <button
-              onClick={() => setTab("image")}
-              className={`rounded-xl border px-4 py-2 text-sm ${
-                tab === "image"
-                  ? "border-white/20 bg-white/10"
-                  : "border-white/10 bg-white/5 hover:bg-white/10"
-              }`}
-            >
-              Image
-            </button>
-
-            <Link
-              href={tab === "text" ? "/detect/text" : "/detect/image"}
-              className="ml-2 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:opacity-90"
-            >
-              New {tab === "text" ? "Text" : "Image"} Scan
-            </Link>
-          </div>
+          <button
+            onClick={loadScans}
+            disabled={!sessionReady || !isAuthed || loading}
+            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 disabled:opacity-60"
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
         </div>
 
-        {!ready ? (
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 text-white/70">
-            Checking…
+        {err && (
+          <div className="mb-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+            {err}
           </div>
-        ) : !authed ? null : (
-          <>
-            {err && (
-              <div className="mb-4 rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">
-                {err}
-              </div>
-            )}
-
-            <div className="grid gap-4 md:grid-cols-3">
-              {loading ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="rounded-3xl border border-white/10 bg-white/5 p-6">
-                    <div className="h-4 w-2/3 rounded bg-white/10" />
-                    <div className="mt-3 h-24 rounded bg-white/5" />
-                  </div>
-                ))
-              ) : rows.length === 0 ? (
-                Array.from({ length: 6 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="rounded-3xl border border-dashed border-white/15 bg-white/3 p-6 text-sm text-white/40"
-                  >
-                    Empty slot
-                  </div>
-                ))
-              ) : (
-                rows.slice(0, 12).map((r) => (
-                  <div key={r.id} className="rounded-3xl border border-white/10 bg-white/5 p-6">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-semibold">
-                        {r.title?.trim() ? r.title : "Untitled"}
-                      </div>
-                      <div className="text-xs text-white/50">
-                        {new Date(r.created_at).toLocaleDateString()}
-                      </div>
-                    </div>
-
-                    {r.kind === "text" ? (
-                      <div className="mt-3 line-clamp-5 rounded-2xl border border-white/10 bg-black/40 p-3 text-sm text-white/80">
-                        {r.preview_text || "No preview"}
-                      </div>
-                    ) : (
-                      <div className="mt-3 rounded-2xl border border-white/10 bg-black/40 p-3">
-                        {r.preview_image_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={r.preview_image_url}
-                            alt="preview"
-                            className="h-40 w-full rounded-xl object-cover"
-                          />
-                        ) : (
-                          <div className="h-40 w-full rounded-xl bg-white/5" />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </>
         )}
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {scans.map((scan) => (
+            <ScanCard key={scan.id} scan={scan} onRename={renameScan} onDelete={deleteScan} />
+          ))}
+
+          {/* If none (or not enough), show dashed empty boxes */}
+          {placeholders.map((_, i) => (
+            <DashedCard key={`empty-${i}`} />
+          ))}
+        </div>
       </main>
     </AppShell>
   );

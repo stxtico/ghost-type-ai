@@ -1,34 +1,9 @@
-@import "tailwindcss/preflight";
-@tailwind utilities;
+﻿@import "tailwindcss";
 
-<<<<<<< Updated upstream
-/* Optional: your global styles below */
-:root {
-  color-scheme: light dark;
-}
-
-html, body {
-  height: 100%;
-}
-=======
-/* Basic global defaults (safe with Tailwind v4) */
->>>>>>> Stashed changes
-:root {
-  --bg: 0 0% 100%;
-  --fg: 222.2 84% 4.9%;
-}
-
-.dark {
-  --bg: 240 10% 3.9%;
-  --fg: 0 0% 98%;
-}
-
-html,
-body {
-  height: 100%;
-}
+/* Base document setup */
+html, body { height: 100%; }
 
 body {
-  background: hsl(var(--bg));
-  color: hsl(var(--fg));
+  background-color: #000;
+  color: #fff;
 }
