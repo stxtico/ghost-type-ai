@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
 import TokenBar from "@/components/TokenBar";
@@ -41,6 +41,46 @@ function donutStyle(aiPercent: number) {
   } as React.CSSProperties;
 }
 
+/**
+ * Tries to insert into "scans" and if your table is missing columns,
+ * it will remove the unknown column and retry (prevents infinite "Saving…").
+ */
+async function insertScanWithPrune(table: string, row: Record<string, any>) {
+  let working: Record<string, any> = { ...row };
+
+  // try a few times, pruning unknown columns
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { error } = await supabase.from(table).insert(working);
+
+    if (!error) return; // success
+
+    const msg = String(error.message || "");
+
+    // common PostgREST unknown column patterns:
+    // - 'column scans.image_url does not exist'
+    // - 'Could not find the ... in the schema cache' (table/view missing)
+    const colMatch =
+      msg.match(/column\s+["']?([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)["']?\s+does not exist/i) ||
+      msg.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/i);
+
+    // if it says a column is missing, drop that key and retry
+    if (colMatch) {
+      const missingCol = colMatch[2] || colMatch[1];
+      if (missingCol && Object.prototype.hasOwnProperty.call(working, missingCol)) {
+        const next = { ...working };
+        delete next[missingCol];
+        working = next;
+        continue;
+      }
+    }
+
+    // Anything else: stop and throw the real error
+    throw error;
+  }
+
+  throw new Error("Save failed: your scans table is missing required columns.");
+}
+
 export default function DetectTextPage() {
   const [sessionReady, setSessionReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
@@ -62,6 +102,15 @@ export default function DetectTextPage() {
   const [usageErr, setUsageErr] = useState<string | null>(null);
 
   const words = useMemo(() => wordsCount(input), [input]);
+
+  // Prevent setting state after unmount / rapid auth changes
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   async function refreshUsage() {
     setUsageErr(null);
@@ -95,19 +144,25 @@ export default function DetectTextPage() {
     });
   }
 
+  // Auth state
   useEffect(() => {
     let unsub: any = null;
 
     (async () => {
       const { data } = await supabase.auth.getSession();
       const authed = !!data.session;
+      if (!alive.current) return;
+
       setIsAuthed(authed);
       setSessionReady(true);
       if (authed) await refreshUsage();
 
       const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
+        if (!alive.current) return;
+
         const nowAuthed = !!session;
         setIsAuthed(nowAuthed);
+        setSessionReady(true);
 
         if (nowAuthed) await refreshUsage();
         else {
@@ -151,6 +206,10 @@ export default function DetectTextPage() {
         return;
       }
 
+      // prevent hanging forever
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 30000);
+
       const res = await fetch("/api/detect-text", {
         method: "POST",
         headers: {
@@ -158,10 +217,13 @@ export default function DetectTextPage() {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ text: input }),
-      });
+        signal: controller.signal,
+      }).finally(() => window.clearTimeout(timeout));
 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`);
+
+      if (!alive.current) return;
 
       setAiPercent(Number(json.aiPercent ?? 0));
       setHumanScore(Number(json.humanScore ?? 0));
@@ -170,58 +232,64 @@ export default function DetectTextPage() {
 
       await refreshUsage();
     } catch (e: any) {
-      setErr(e?.message || "Something went wrong.");
+      const msg =
+        e?.name === "AbortError"
+          ? "Detect request timed out. Try again."
+          : e?.message || "Something went wrong.";
+      if (alive.current) setErr(msg);
     } finally {
-      setLoading(false);
+      if (alive.current) setLoading(false);
     }
   }
 
-  async function saveScan() {
-    setSaveMsg(null);
+async function saveScan() {
+  setSaveMsg(null);
 
-    if (!isAuthed) {
+  if (!isAuthed) {
+    window.location.href = "/login";
+    return;
+  }
+
+  if (!input.trim() || aiPercent === null) {
+    setSaveMsg("Run a scan first.");
+    return;
+  }
+
+  setSaveLoading(true);
+  try {
+    const { data: u, error: uErr } = await supabase.auth.getUser();
+    if (uErr || !u.user) {
       window.location.href = "/login";
       return;
     }
 
-    if (!input.trim() || aiPercent === null) {
-      setSaveMsg("Run a scan first.");
-      return;
-    }
+    const title = `Text scan • ${new Date().toLocaleString()}`;
 
-    setSaveLoading(true);
-    try {
-      const { data: u, error: uErr } = await supabase.auth.getUser();
-      if (uErr || !u.user) {
-        window.location.href = "/login";
-        return;
-      }
+    // IMPORTANT: only insert into ONE table: "scans"
+    const { error } = await supabase.from("scans").insert({
+      user_id: u.user.id,
+      type: "text",
+      title,
+      input_text: input, // make sure this column exists in scans
+      ai_percent: aiPercent, // optional but recommended
+      result: {
+        aiPercent,
+        humanScore,
+        sentences,
+        warning,
+      }, // requires a json/jsonb "result" column
+    });
 
-      const title = `Text scan • ${new Date().toLocaleString()}`;
+    if (error) throw error;
 
-      const payload = {
-        user_id: u.user.id,
-        title,
-        input_text: input,
-        ai_percent: aiPercent,
-        result: {
-          aiPercent,
-          humanScore,
-          sentences,
-          warning,
-        },
-      };
-
-      const { error } = await supabase.from("scans_text").insert(payload);
-      if (error) throw error;
-
-      setSaveMsg("Saved!");
-    } catch (e: any) {
-      setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
-    } finally {
-      setSaveLoading(false);
-    }
+    setSaveMsg("Saved!");
+  } catch (e: any) {
+    setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
+  } finally {
+    setSaveLoading(false);
   }
+}
+
 
   return (
     <AppShell>

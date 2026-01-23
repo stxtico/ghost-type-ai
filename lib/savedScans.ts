@@ -1,47 +1,42 @@
-// lib/savedScans.ts
-import { supabase } from "@/lib/supabaseClient";
-
-export type ScanType = "text" | "image";
-
-export type SavedScanRow = {
+export type SavedScan = {
   id: string;
-  title: string | null;
-  text: string | null;
-  image_url: string | null;
-  created_at: string;
+  type: "text" | "image";
+  title: string;         // shown in sidebar
+  createdAt: number;     // Date.now()
+  payload: any;          // whatever you want (aiPercent, text snippet, etc.)
 };
 
-export async function fetchLatestScans(type: ScanType, limit = 3) {
-  // One table: scans
-  // Filter by which column is present
-  let q = supabase
-    .from("scans")
-    .select("id,title,text,image_url,created_at")
-    .order("created_at", { ascending: false })
-    .limit(limit);
+const KEY = "aai_saved_scans_v1";
 
-  if (type === "text") {
-    // Prefer: image_url IS NULL (text scan)
-    q = q.is("image_url", null);
-  } else {
-    // Prefer: image_url IS NOT NULL (image scan)
-    q = q.not("image_url", "is", null);
+function readAll(): SavedScan[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch {
+    return [];
   }
-
-  const { data, error } = await q;
-  if (error) throw error;
-
-  return (data ?? []) as SavedScanRow[];
 }
 
-export async function renameScan(id: string, title: string) {
-  const clean = title.trim() || "Untitled";
-  const { error } = await supabase.from("scans").update({ title: clean }).eq("id", id);
-  if (error) throw error;
-  return clean;
+function writeAll(scans: SavedScan[]) {
+  localStorage.setItem(KEY, JSON.stringify(scans.slice(0, 50))); // keep last 50
 }
 
-export async function deleteScan(id: string) {
-  const { error } = await supabase.from("scans").delete().eq("id", id);
-  if (error) throw error;
+export function getSavedScans(type?: "text" | "image") {
+  const all = readAll().sort((a, b) => b.createdAt - a.createdAt);
+  return type ? all.filter((s) => s.type === type) : all;
+}
+
+export function saveScan(scan: SavedScan) {
+  const all = readAll();
+  const next = [scan, ...all.filter((s) => s.id !== scan.id)];
+  writeAll(next);
+}
+
+export function deleteScan(id: string) {
+  const all = readAll().filter((s) => s.id !== id);
+  writeAll(all);
 }

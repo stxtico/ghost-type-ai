@@ -217,8 +217,9 @@ export default function Home() {
   }
 
   async function loadRecent() {
-    // reset to loading state
     if (!alive.current) return;
+
+    // set loading state
     setSavedText(null);
     setSavedImages(null);
 
@@ -244,7 +245,7 @@ export default function Home() {
 
       if (!alive.current) return;
 
-      // If session expired / invalid, show logged-out placeholders
+      // session invalid -> show empty (don’t crash)
       if (tRes.status === 401 || iRes.status === 401) {
         setSavedText([]);
         setSavedImages([]);
@@ -254,8 +255,10 @@ export default function Home() {
       const tJson = await tRes.json().catch(() => ({}));
       const iJson = await iRes.json().catch(() => ({}));
 
-      if (!tRes.ok) throw new Error(tJson?.error || `Text fetch failed (${tRes.status})`);
-      if (!iRes.ok) throw new Error(iJson?.error || `Image fetch failed (${iRes.status})`);
+      if (!tRes.ok)
+        throw new Error(tJson?.error || `Text fetch failed (${tRes.status})`);
+      if (!iRes.ok)
+        throw new Error(iJson?.error || `Image fetch failed (${iRes.status})`);
 
       const tArr = Array.isArray(tJson.scans) ? tJson.scans : [];
       const iArr = Array.isArray(iJson.scans) ? iJson.scans : [];
@@ -280,7 +283,7 @@ export default function Home() {
       setSavedText(tFixed);
       setSavedImages(iFixed);
     } catch {
-      // IMPORTANT: never crash the dashboard -> keep UI alive
+      // Never crash the dashboard
       if (!alive.current) return;
       setSavedText([]);
       setSavedImages([]);
@@ -312,7 +315,6 @@ export default function Home() {
       body: JSON.stringify({ id, title }),
     });
 
-    const j = await res.json().catch(() => ({}));
     if (!res.ok) return;
 
     setSavedText((prev) =>
@@ -333,7 +335,6 @@ export default function Home() {
       body: JSON.stringify({ id }),
     });
 
-    const j = await res.json().catch(() => ({}));
     if (!res.ok) return;
 
     setSavedText((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
@@ -353,7 +354,6 @@ export default function Home() {
       body: JSON.stringify({ id, title }),
     });
 
-    const j = await res.json().catch(() => ({}));
     if (!res.ok) return;
 
     setSavedImages((prev) =>
@@ -374,12 +374,9 @@ export default function Home() {
       body: JSON.stringify({ id }),
     });
 
-    const j = await res.json().catch(() => ({}));
     if (!res.ok) return;
 
-    setSavedImages((prev) =>
-      prev ? prev.filter((s) => s.id !== id) : prev
-    );
+    setSavedImages((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
   }
 
   return (
@@ -388,7 +385,9 @@ export default function Home() {
         {/* Page header (inside content) */}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <div className="text-2xl font-semibold tracking-tight">Dashboard</div>
+            <div className="text-2xl font-semibold tracking-tight">
+              Dashboard
+            </div>
             <div className="mt-1 text-sm text-white/60">
               Choose a tool to get started.
             </div>

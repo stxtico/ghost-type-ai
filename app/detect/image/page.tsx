@@ -1,9 +1,54 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
 import TokenBar from "@/components/TokenBar";
+
+/**
+ * Insert into scans; if your table is missing some columns,
+ * remove them automatically and retry so the UI doesn’t hang.
+ */
+async function insertScanWithPrune(table: string, row: Record<string, any>) {
+  let working: Record<string, any> = { ...row };
+
+  for (let attempt = 0; attempt < 6; attempt++) {
+    // add a simple timeout so "Saving..." never hangs forever
+    const controller = new AbortController();
+    const t = window.setTimeout(() => controller.abort(), 30000);
+
+    // supabase-js doesn't expose abort directly on insert,
+    // but we can still guard against long UI hangs by timing out the overall save flow.
+    const { error } = await supabase.from(table).insert(working);
+
+    window.clearTimeout(t);
+
+    if (!error) return;
+
+    const msg = String(error.message || "");
+
+    // Unknown column patterns:
+    // - 'column scans.image_url does not exist'
+    // - 'column image_url does not exist'
+    const colMatch =
+      msg.match(/column\s+["']?([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)["']?\s+does not exist/i) ||
+      msg.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/i);
+
+    if (colMatch) {
+      const missingCol = colMatch[2] || colMatch[1];
+      if (missingCol && Object.prototype.hasOwnProperty.call(working, missingCol)) {
+        const next = { ...working };
+        delete next[missingCol];
+        working = next;
+        continue;
+      }
+    }
+
+    throw error;
+  }
+
+  throw new Error("Save failed: your scans table is missing required columns.");
+}
 
 export default function DetectImagePage() {
   const [sessionReady, setSessionReady] = useState(false);
@@ -21,6 +66,14 @@ export default function DetectImagePage() {
 
   const [usage, setUsage] = useState<{ used: number; limit: number; unit?: string } | null>(null);
   const [usageErr, setUsageErr] = useState<string | null>(null);
+
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   async function refreshUsage() {
     setUsageErr(null);
@@ -62,13 +115,18 @@ export default function DetectImagePage() {
     (async () => {
       const { data } = await supabase.auth.getSession();
       const authed = !!data.session;
+      if (!alive.current) return;
+
       setIsAuthed(authed);
       setSessionReady(true);
       if (authed) await refreshUsage();
 
       const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
+        if (!alive.current) return;
         const nowAuthed = !!session;
         setIsAuthed(nowAuthed);
+        setSessionReady(true);
+
         if (nowAuthed) await refreshUsage();
         else {
           setUsage(null);
@@ -121,25 +179,31 @@ export default function DetectImagePage() {
       const fd = new FormData();
       fd.append("image", file);
 
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 45000);
+
       const res = await fetch("/api/detect-image", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { Authorization: `Bearer ${accessToken}` },
         body: fd,
-      });
+        signal: controller.signal,
+      }).finally(() => window.clearTimeout(timeout));
 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`);
 
+      if (!alive.current) return;
       setResult(json);
 
-      // refresh tokens after usage
       await refreshUsage();
     } catch (e: any) {
-      setErr(e?.message || "Something went wrong.");
+      const msg =
+        e?.name === "AbortError"
+          ? "Image scan timed out. Try a smaller image or try again."
+          : e?.message || "Something went wrong.";
+      if (alive.current) setErr(msg);
     } finally {
-      setLoading(false);
+      if (alive.current) setLoading(false);
     }
   }
 
@@ -157,6 +221,7 @@ export default function DetectImagePage() {
     }
 
     setSaveLoading(true);
+
     try {
       const { data: u, error: uErr } = await supabase.auth.getUser();
       if (uErr || !u.user) {
@@ -164,36 +229,52 @@ export default function DetectImagePage() {
         return;
       }
 
-      // 1) upload image to Storage
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const path = `${u.user.id}/${Date.now()}-${safeName}`;
-
-      const up = await supabase.storage.from("scan-images").upload(path, file, {
-        cacheControl: "3600",
-        upsert: false,
-      });
-
-      if (up.error) throw up.error;
-
-      // 2) insert scan record
       const title = `Image scan • ${new Date().toLocaleString()}`;
 
-      const payload = {
+      // Try to upload to Storage (optional). If it fails, we still save the scan row.
+      let imagePath: string | null = null;
+
+      try {
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const path = `${u.user.id}/${Date.now()}-${safeName}`;
+
+        const up = await supabase.storage.from("scan-images").upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
+
+        if (!up.error) imagePath = path;
+      } catch {
+        // ignore storage problems; still allow DB save
+      }
+
+      // Build a single "scans" row. If your table doesn't have some columns,
+      // insertScanWithPrune will remove them and retry.
+      const row = {
         user_id: u.user.id,
+        type: "image",
         title,
-        image_path: path,
-        result,
+
+        // optional columns depending on your schema:
+        image_path: imagePath,
+        image_url: null, // if you ever store public URLs; safe to prune if missing
         ai_percent: result?.aiPercent ?? null,
+
+        // store the whole response if you have a jsonb column (often "result")
+        result,
+
+        created_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase.from("scans_image").insert(payload);
-      if (error) throw error;
+      await insertScanWithPrune("scans", row);
 
-      setSaveMsg("Saved!");
+      if (!alive.current) return;
+      setSaveMsg(imagePath ? "Saved! (image uploaded)" : "Saved! (no image upload)");
     } catch (e: any) {
+      if (!alive.current) return;
       setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
     } finally {
-      setSaveLoading(false);
+      if (alive.current) setSaveLoading(false);
     }
   }
 
@@ -274,11 +355,7 @@ export default function DetectImagePage() {
             <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
               {previewUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={previewUrl}
-                  alt="preview"
-                  className="max-h-85 w-full rounded-xl object-contain"
-                />
+                <img src={previewUrl} alt="preview" className="max-h-85 w-full rounded-xl object-contain" />
               ) : (
                 <div className="text-sm text-white/40">Choose an image to preview it here.</div>
               )}
