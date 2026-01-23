@@ -294,7 +294,7 @@ export default function DetectTextPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Paste text here…"
-              className="h-[320px] w-full resize-none rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white outline-none placeholder:text-white/35 focus:border-white/25"
+              className="h-80 w-full resize-none rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white outline-none placeholder:text-white/35 focus:border-white/25"
             />
 
             {err && <div className="mt-3 text-sm text-red-300">{err}</div>}
@@ -347,7 +347,7 @@ export default function DetectTextPage() {
               {sentences.length === 0 ? (
                 <div className="text-sm text-white/40">Sentence highlights will appear here.</div>
               ) : (
-                <div className="max-h-[240px] space-y-2 overflow-auto text-sm">
+                <div className="max-h-60 space-y-2 overflow-auto text-sm">
                   {sentences.map((s, i) => (
                     <div key={i} className={`rounded-xl border px-3 py-2 ${pillFor(s.label)}`}>
                       <div className="text-white/90">{s.text}</div>

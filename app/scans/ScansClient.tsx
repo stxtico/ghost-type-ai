@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
 type ScanRow = {
   id: string;
@@ -29,8 +30,8 @@ function ScanCard({
   onDelete,
 }: {
   scan: ScanRow;
-  onRename: (id: string, nextTitle: string) => void;
-  onDelete: (id: string) => void;
+  onRename: (id: string, nextTitle: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(scan.title || "Untitled");
@@ -47,9 +48,9 @@ function ScanCard({
                 className="w-full max-w-60 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-white/25"
               />
               <button
-                onClick={() => {
+                onClick={async () => {
                   setEditing(false);
-                  onRename(scan.id, title.trim() || "Untitled");
+                  await onRename(scan.id, title.trim() || "Untitled");
                 }}
                 className="rounded-xl bg-white px-3 py-2 text-sm font-medium text-black hover:opacity-90"
               >
@@ -76,7 +77,7 @@ function ScanCard({
             </button>
           )}
           <button
-            onClick={() => onDelete(scan.id)}
+            onClick={async () => onDelete(scan.id)}
             className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
           >
             Delete
@@ -95,7 +96,11 @@ function ScanCard({
           </div>
         ) : scan.image_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={scan.image_url} alt="scan" className="max-h-56 w-full rounded-xl object-contain" />
+          <img
+            src={scan.image_url}
+            alt="scan"
+            className="max-h-56 w-full rounded-xl object-contain"
+          />
         ) : (
           <div className="text-sm text-white/40">No image preview.</div>
         )}
@@ -112,154 +117,147 @@ export default function ScansClient({ filterType }: { filterType: "text" | "imag
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const filtered = useMemo(() => scans.filter((s) => s.type === filterType), [scans, filterType]);
+  const mountedRef = useRef(true);
+
+  const title = filterType === "text" ? "Saved Text Scans" : "Saved Image Scans";
+  const nextPath = filterType === "text" ? "/scans/text" : "/scans/image";
 
   const placeholders = useMemo(() => {
-    const missing = Math.max(0, 6 - filtered.length);
+    const missing = Math.max(0, 6 - (isAuthed ? scans.length : 0));
     return Array.from({ length: missing });
-  }, [filtered.length]);
+  }, [scans.length, isAuthed]);
 
-  function goLogin() {
-    const next = encodeURIComponent(window.location.pathname);
-    window.location.href = `/login?next=${next}`;
+  async function getAccessToken(): Promise<string | null> {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
   }
 
   async function loadScans() {
     setErr(null);
     setLoading(true);
-    try {
-      const { data } = await supabase.auth.getSession();
-      const accessToken = data.session?.access_token;
 
-      // IMPORTANT: no auto-redirect. Just stop and show the login-required UI.
-      if (!accessToken) {
+    try {
+      const token = await getAccessToken();
+
+      // Not logged in -> do NOT redirect. Just show empty placeholders.
+      if (!token) {
+        if (!mountedRef.current) return;
+        setIsAuthed(false);
         setScans([]);
         return;
       }
 
-      const res = await fetch("/api/scans", {
+      const res = await fetch(`/api/scans?type=${filterType}`, {
         method: "GET",
-        headers: { Authorization: `Bearer ${accessToken}` },
-        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       const j = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        if (!mountedRef.current) return;
+        setIsAuthed(false);
+        setScans([]);
+        return;
+      }
+
       if (!res.ok) throw new Error(j?.error || `Request failed (${res.status})`);
 
+      if (!mountedRef.current) return;
       setScans(Array.isArray(j.scans) ? j.scans : []);
     } catch (e: any) {
+      if (!mountedRef.current) return;
       setErr(e?.message || "Failed to load scans.");
+      setScans([]);
     } finally {
+      if (!mountedRef.current) return;
       setLoading(false);
     }
   }
 
   async function renameScan(id: string, nextTitle: string) {
-    try {
-      const { data } = await supabase.auth.getSession();
-      const accessToken = data.session?.access_token;
-      if (!accessToken) return goLogin();
+    setErr(null);
 
-      const res = await fetch("/api/scans", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ id, title: nextTitle }),
-      });
-
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error || `Rename failed (${res.status})`);
-
-      setScans((prev) => prev.map((s) => (s.id === id ? { ...s, title: nextTitle } : s)));
-    } catch (e: any) {
-      setErr(e?.message || "Rename failed.");
+    const token = await getAccessToken();
+    if (!token) {
+      setIsAuthed(false);
+      return;
     }
+
+    const res = await fetch(`/api/scans`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ id, title: nextTitle }),
+    });
+
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      setIsAuthed(false);
+      setScans([]);
+      return;
+    }
+    if (!res.ok) throw new Error(j?.error || `Rename failed (${res.status})`);
+
+    setScans((prev) => prev.map((s) => (s.id === id ? { ...s, title: nextTitle } : s)));
   }
 
   async function deleteScan(id: string) {
-    try {
-      const { data } = await supabase.auth.getSession();
-      const accessToken = data.session?.access_token;
-      if (!accessToken) return goLogin();
+    setErr(null);
 
-      const res = await fetch("/api/scans", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ id }),
-      });
-
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j?.error || `Delete failed (${res.status})`);
-
-      setScans((prev) => prev.filter((s) => s.id !== id));
-    } catch (e: any) {
-      setErr(e?.message || "Delete failed.");
+    const token = await getAccessToken();
+    if (!token) {
+      setIsAuthed(false);
+      return;
     }
+
+    const res = await fetch("/api/scans", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ id }),
+    });
+
+    const j = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      setIsAuthed(false);
+      setScans([]);
+      return;
+    }
+    if (!res.ok) throw new Error(j?.error || `Delete failed (${res.status})`);
+
+    setScans((prev) => prev.filter((s) => s.id !== id));
   }
 
   useEffect(() => {
-    let unsub: any = null;
+    mountedRef.current = true;
 
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      setIsAuthed(!!data.session);
+      const token = await getAccessToken();
+      setIsAuthed(!!token);
       setSessionReady(true);
 
-      // Only load scans if authed. No redirect.
-      if (data.session) await loadScans();
-
-      const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
-        const nowAuthed = !!session;
-        setIsAuthed(nowAuthed);
-
-        if (nowAuthed) await loadScans();
-        else {
-          setScans([]);
-          setErr(null);
-        }
-      });
-
-      unsub = sub.subscription;
+      if (token) await loadScans();
+      else setScans([]);
     })();
 
-    return () => unsub?.unsubscribe?.();
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
+      const authed = !!session?.access_token;
+      setIsAuthed(authed);
+      if (authed) await loadScans();
+      else setScans([]);
+    });
+
+    return () => {
+      mountedRef.current = false;
+      sub.subscription?.unsubscribe?.();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const title = filterType === "text" ? "Saved Text Scans" : "Saved Image Scans";
-
-  // ✅ Guest view (NO redirect -> no loop)
-  if (sessionReady && !isAuthed) {
-    return (
-      <AppShell>
-        <main className="px-10 py-8">
-          <div className="mb-6 rounded-3xl border border-white/10 bg-white/5 p-6">
-            <div className="text-lg font-semibold">{title}</div>
-            <div className="mt-2 text-sm text-white/60">
-              You need to log in to view saved scans.
-            </div>
-            <button
-              onClick={goLogin}
-              className="mt-5 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-black hover:opacity-90"
-            >
-              Go to Login
-            </button>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <DashedCard key={`guest-empty-${i}`} />
-            ))}
-          </div>
-        </main>
-      </AppShell>
-    );
-  }
+  }, [filterType]);
 
   return (
     <AppShell>
@@ -267,16 +265,33 @@ export default function ScansClient({ filterType }: { filterType: "text" | "imag
         <div className="mb-8 flex items-center justify-between gap-6">
           <div>
             <div className="text-2xl font-semibold tracking-tight">{title}</div>
-            <div className="mt-1 text-sm text-white/60">Manage your saved scans.</div>
+            <div className="mt-1 text-sm text-white/60">
+              {isAuthed ? "Manage your saved scans." : "Log in to view and manage saved scans."}
+            </div>
           </div>
 
-          <button
-            onClick={loadScans}
-            disabled={!sessionReady || !isAuthed || loading}
-            className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 disabled:opacity-60"
-          >
-            {loading ? "Refreshing…" : "Refresh"}
-          </button>
+          <div className="flex items-center gap-3">
+            {!sessionReady ? (
+              <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/70">
+                Checking…
+              </div>
+            ) : isAuthed ? (
+              <button
+                onClick={loadScans}
+                disabled={loading}
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm hover:bg-white/10 disabled:opacity-60"
+              >
+                {loading ? "Refreshing…" : "Refresh"}
+              </button>
+            ) : (
+              <Link
+                href={`/login?next=${encodeURIComponent(nextPath)}`}
+                className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:opacity-90"
+              >
+                Log in
+              </Link>
+            )}
+          </div>
         </div>
 
         {err && (
@@ -286,9 +301,10 @@ export default function ScansClient({ filterType }: { filterType: "text" | "imag
         )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((scan) => (
-            <ScanCard key={scan.id} scan={scan} onRename={renameScan} onDelete={deleteScan} />
-          ))}
+          {isAuthed &&
+            scans.map((scan) => (
+              <ScanCard key={scan.id} scan={scan} onRename={renameScan} onDelete={deleteScan} />
+            ))}
 
           {placeholders.map((_, i) => (
             <DashedCard key={`empty-${i}`} />

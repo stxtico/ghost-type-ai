@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "./_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -35,15 +35,17 @@ function Card({
 type SavedTextScan = {
   id: string;
   title: string | null;
-  text: string;
-  created_at?: string;
+  text_preview: string | null;
+  created_at: string;
+  type: "text";
 };
 
 type SavedImageScan = {
   id: string;
   title: string | null;
-  image_url: string | null; // public URL or signed URL you store
-  created_at?: string;
+  image_url: string | null;
+  created_at: string;
+  type: "image";
 };
 
 function PlaceholderGrid({ count = 3 }: { count?: number }) {
@@ -52,7 +54,7 @@ function PlaceholderGrid({ count = 3 }: { count?: number }) {
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="rounded-2xl border border-dashed border-white/20 bg-white/[0.03] p-4"
+          className="rounded-2xl border border-dashed border-white/20 bg-white/3 p-4"
         >
           <div className="h-4 w-28 rounded bg-white/10" />
           <div className="mt-3 h-16 rounded-xl bg-white/5" />
@@ -73,7 +75,7 @@ function SavedTextCard({
   onDelete: (id: string) => void;
 }) {
   const title = (scan.title?.trim() || "Untitled").slice(0, 60);
-  const preview = (scan.text || "").trim().slice(0, 130);
+  const preview = (scan.text_preview || "").trim().slice(0, 130);
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -173,25 +175,117 @@ export default function Home() {
   const [savedText, setSavedText] = useState<SavedTextScan[] | null>(null);
   const [savedImages, setSavedImages] = useState<SavedImageScan[] | null>(null);
 
-  const canShowSaved = useMemo(() => sessionReady && isAuthed, [sessionReady, isAuthed]);
+  const canShowSaved = useMemo(
+    () => sessionReady && isAuthed,
+    [sessionReady, isAuthed]
+  );
 
+  // Prevent setting state after unmount / rapid auth changes
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+
+  // Auth state
   useEffect(() => {
     let unsub: any = null;
 
     (async () => {
       const { data } = await supabase.auth.getSession();
+      if (!alive.current) return;
       setIsAuthed(!!data.session);
       setSessionReady(true);
 
       const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+        if (!alive.current) return;
         setIsAuthed(!!session);
         setSessionReady(true);
       });
+
       unsub = sub.subscription;
     })();
 
     return () => unsub?.unsubscribe?.();
   }, []);
+
+  async function getAccessToken(): Promise<string | null> {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  }
+
+  async function loadRecent() {
+    // reset to loading state
+    if (!alive.current) return;
+    setSavedText(null);
+    setSavedImages(null);
+
+    const token = await getAccessToken();
+    if (!token) {
+      if (!alive.current) return;
+      setSavedText([]);
+      setSavedImages([]);
+      return;
+    }
+
+    try {
+      const [tRes, iRes] = await Promise.all([
+        fetch("/api/scans?type=text", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch("/api/scans?type=image", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      if (!alive.current) return;
+
+      // If session expired / invalid, show logged-out placeholders
+      if (tRes.status === 401 || iRes.status === 401) {
+        setSavedText([]);
+        setSavedImages([]);
+        return;
+      }
+
+      const tJson = await tRes.json().catch(() => ({}));
+      const iJson = await iRes.json().catch(() => ({}));
+
+      if (!tRes.ok) throw new Error(tJson?.error || `Text fetch failed (${tRes.status})`);
+      if (!iRes.ok) throw new Error(iJson?.error || `Image fetch failed (${iRes.status})`);
+
+      const tArr = Array.isArray(tJson.scans) ? tJson.scans : [];
+      const iArr = Array.isArray(iJson.scans) ? iJson.scans : [];
+
+      // normalize + take 3
+      const tFixed: SavedTextScan[] = tArr.slice(0, 3).map((r: any) => ({
+        id: String(r.id),
+        title: (r.title ?? null) as string | null,
+        text_preview: (r.text_preview ?? null) as string | null,
+        created_at: String(r.created_at ?? new Date().toISOString()),
+        type: "text",
+      }));
+
+      const iFixed: SavedImageScan[] = iArr.slice(0, 3).map((r: any) => ({
+        id: String(r.id),
+        title: (r.title ?? null) as string | null,
+        image_url: (r.image_url ?? null) as string | null,
+        created_at: String(r.created_at ?? new Date().toISOString()),
+        type: "image",
+      }));
+
+      setSavedText(tFixed);
+      setSavedImages(iFixed);
+    } catch {
+      // IMPORTANT: never crash the dashboard -> keep UI alive
+      if (!alive.current) return;
+      setSavedText([]);
+      setSavedImages([]);
+    }
+  }
 
   // Load saved scans (only if logged in)
   useEffect(() => {
@@ -200,58 +294,92 @@ export default function Home() {
       setSavedImages(null);
       return;
     }
-
-    (async () => {
-      // TEXT SAVES
-      const { data: t, error: tErr } = await supabase
-        .from("saved_scans_text")
-        .select("id,title,text,created_at")
-        .order("created_at", { ascending: false })
-        .limit(3);
-
-      if (!tErr && Array.isArray(t)) setSavedText(t as any);
-      else setSavedText([]); // show placeholders if error / none
-
-      // IMAGE SAVES
-      const { data: im, error: imErr } = await supabase
-        .from("saved_scans_image")
-        .select("id,title,image_url,created_at")
-        .order("created_at", { ascending: false })
-        .limit(3);
-
-      if (!imErr && Array.isArray(im)) setSavedImages(im as any);
-      else setSavedImages([]);
-    })();
+    loadRecent();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canShowSaved]);
 
   async function renameText(id: string, newTitle: string) {
     const title = newTitle.trim() || "Untitled";
-    const { error } = await supabase.from("saved_scans_text").update({ title }).eq("id", id);
-    if (!error) {
-      setSavedText((prev) => (prev ? prev.map((s) => (s.id === id ? { ...s, title } : s)) : prev));
-    }
+    const token = await getAccessToken();
+    if (!token) return;
+
+    const res = await fetch("/api/scans", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ id, title }),
+    });
+
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+
+    setSavedText((prev) =>
+      prev ? prev.map((s) => (s.id === id ? { ...s, title } : s)) : prev
+    );
   }
 
   async function deleteText(id: string) {
-    const { error } = await supabase.from("saved_scans_text").delete().eq("id", id);
-    if (!error) {
-      setSavedText((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
-    }
+    const token = await getAccessToken();
+    if (!token) return;
+
+    const res = await fetch("/api/scans", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ id }),
+    });
+
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+
+    setSavedText((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
   }
 
   async function renameImage(id: string, newTitle: string) {
     const title = newTitle.trim() || "Untitled";
-    const { error } = await supabase.from("saved_scans_image").update({ title }).eq("id", id);
-    if (!error) {
-      setSavedImages((prev) => (prev ? prev.map((s) => (s.id === id ? { ...s, title } : s)) : prev));
-    }
+    const token = await getAccessToken();
+    if (!token) return;
+
+    const res = await fetch("/api/scans", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ id, title }),
+    });
+
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+
+    setSavedImages((prev) =>
+      prev ? prev.map((s) => (s.id === id ? { ...s, title } : s)) : prev
+    );
   }
 
   async function deleteImage(id: string) {
-    const { error } = await supabase.from("saved_scans_image").delete().eq("id", id);
-    if (!error) {
-      setSavedImages((prev) => (prev ? prev.filter((s) => s.id !== id) : prev));
-    }
+    const token = await getAccessToken();
+    if (!token) return;
+
+    const res = await fetch("/api/scans", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ id }),
+    });
+
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) return;
+
+    setSavedImages((prev) =>
+      prev ? prev.filter((s) => s.id !== id) : prev
+    );
   }
 
   return (
@@ -261,7 +389,9 @@ export default function Home() {
         <div className="mb-8 flex items-center justify-between">
           <div>
             <div className="text-2xl font-semibold tracking-tight">Dashboard</div>
-            <div className="mt-1 text-sm text-white/60">Choose a tool to get started.</div>
+            <div className="mt-1 text-sm text-white/60">
+              Choose a tool to get started.
+            </div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -291,8 +421,16 @@ export default function Home() {
 
         {/* Big cards row */}
         <div className="grid gap-4 md:grid-cols-3">
-          <Card title="Start AI Text Scan" desc="Check whether text looks AI-written." href="/detect/text" />
-          <Card title="Start AI Image Scan" desc="Analyze images for AI generation." href="/detect/image" />
+          <Card
+            title="Start AI Text Scan"
+            desc="Check whether text looks AI-written."
+            href="/detect/text"
+          />
+          <Card
+            title="Start AI Image Scan"
+            desc="Analyze images for AI generation."
+            href="/detect/image"
+          />
         </div>
 
         {/* Saved scans previews */}
@@ -303,7 +441,9 @@ export default function Home() {
               <div>
                 <div className="text-sm font-medium">Saved Text Scans</div>
                 <div className="mt-1 text-xs text-white/60">
-                  {isAuthed ? "Your latest saved text scans." : "Login to see your saved scans."}
+                  {isAuthed
+                    ? "Your latest saved text scans."
+                    : "Login to see your saved scans."}
                 </div>
               </div>
 
@@ -315,7 +455,7 @@ export default function Home() {
                   New Text Scan
                 </Link>
                 <Link
-                  href="/detect/text?saved=1"
+                  href="/scans/text"
                   className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:opacity-90"
                 >
                   View all
@@ -334,7 +474,12 @@ export default function Home() {
             ) : (
               <div className="grid gap-3 md:grid-cols-3">
                 {savedText.map((s) => (
-                  <SavedTextCard key={s.id} scan={s} onRename={renameText} onDelete={deleteText} />
+                  <SavedTextCard
+                    key={s.id}
+                    scan={s}
+                    onRename={renameText}
+                    onDelete={deleteText}
+                  />
                 ))}
               </div>
             )}
@@ -346,7 +491,9 @@ export default function Home() {
               <div>
                 <div className="text-sm font-medium">Saved Image Scans</div>
                 <div className="mt-1 text-xs text-white/60">
-                  {isAuthed ? "Your latest saved image scans." : "Login to see your saved scans."}
+                  {isAuthed
+                    ? "Your latest saved image scans."
+                    : "Login to see your saved scans."}
                 </div>
               </div>
 
@@ -358,7 +505,7 @@ export default function Home() {
                   New Image Scan
                 </Link>
                 <Link
-                  href="/detect/image?saved=1"
+                  href="/scans/image"
                   className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:opacity-90"
                 >
                   View all
@@ -377,7 +524,12 @@ export default function Home() {
             ) : (
               <div className="grid gap-3 md:grid-cols-3">
                 {savedImages.map((s) => (
-                  <SavedImageCard key={s.id} scan={s} onRename={renameImage} onDelete={deleteImage} />
+                  <SavedImageCard
+                    key={s.id}
+                    scan={s}
+                    onRename={renameImage}
+                    onDelete={deleteImage}
+                  />
                 ))}
               </div>
             )}

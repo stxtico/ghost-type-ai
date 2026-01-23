@@ -46,64 +46,28 @@ export default function Sidebar() {
 
   return (
     <aside className="w-70 shrink-0 border-r border-white/10 bg-black px-5 py-5">
-      {/* Brand */}
       <div className="mb-6">
-        <div className="text-lg font-semibold tracking-tight text-white">
-          Ghost
-        </div>
-        <div className="mt-1 text-xs text-white/50">
-          Detect AI in text & images
-        </div>
+        <div className="text-lg font-semibold tracking-tight text-white">Ghost Typer</div>
+        <div className="mt-1 text-xs text-white/50">Detect AI in text & images</div>
       </div>
 
-      {/* Dashboard */}
       <NavButton href="/" label="Dashboard" active={isActive("/")} />
 
-      {/* Detect */}
       <SectionTitle>Text</SectionTitle>
-      <NavButton
-        href="/detect/text"
-        label="New Text Scan"
-        active={isActive("/detect/text")}
-      />
-      <NavButton
-        href="/scans/text"
-        label="Saved Text Scans"
-        active={isActive("/scans/text")}
-      />
+      <NavButton href="/detect/text" label="New Text Scan" active={isActive("/detect/text")} />
+      <NavButton href="/scans/text" label="Saved Text Scans" active={isActive("/scans/text")} />
 
       <SectionTitle>Image</SectionTitle>
-      <NavButton
-        href="/detect/image"
-        label="New Image Scan"
-        active={isActive("/detect/image")}
-      />
-      <NavButton
-        href="/scans/image"
-        label="Saved Image Scans"
-        active={isActive("/scans/image")}
-      />
+      <NavButton href="/detect/image" label="New Image Scan" active={isActive("/detect/image")} />
+      <NavButton href="/scans/image" label="Saved Image Scans" active={isActive("/scans/image")} />
 
-      {/* Tools */}
       <SectionTitle>Tools</SectionTitle>
-      <NavButton
-        href="/download"
-        label="Download Typer"
-        active={isActive("/download")}
-      />
+      <NavButton href="/download" label="Download Typer" active={isActive("/download")} />
 
-      {/* Billing */}
       <SectionTitle>Billing</SectionTitle>
-      <NavButton
-        href="/billing"
-        label="Manage Subscription"
-        active={isActive("/billing")}
-      />
+      <NavButton href="/billing" label="Manage Subscription" active={isActive("/billing")} />
 
-      {/* Footer */}
-      <div className="mt-8 text-xs text-white/35">
-        © {new Date().getFullYear()} Ghost
-      </div>
+      <div className="mt-8 text-xs text-white/35">© {new Date().getFullYear()} Ghost Typer</div>
     </aside>
   );
 }

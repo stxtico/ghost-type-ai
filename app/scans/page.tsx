@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import ScansClient from "./ScansClient";
 
-export default function ScansIndexPage() {
-  redirect("/scans/text");
+export default function SavedTextScansPage() {
+  return <ScansClient filterType="text" />;
 }

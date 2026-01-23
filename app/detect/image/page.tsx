@@ -277,7 +277,7 @@ export default function DetectImagePage() {
                 <img
                   src={previewUrl}
                   alt="preview"
-                  className="max-h-[340px] w-full rounded-xl object-contain"
+                  className="max-h-85 w-full rounded-xl object-contain"
                 />
               ) : (
                 <div className="text-sm text-white/40">Choose an image to preview it here.</div>
@@ -294,7 +294,7 @@ export default function DetectImagePage() {
               {!result ? (
                 <div className="text-sm text-white/40">Results will appear here after you run a scan.</div>
               ) : (
-                <pre className="max-h-[340px] overflow-auto text-xs text-white/90">
+                <pre className="max-h-85 overflow-auto text-xs text-white/90">
                   {JSON.stringify(result, null, 2)}
                 </pre>
               )}

@@ -5,19 +5,11 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-function safeNext(raw: string | null) {
-  if (!raw) return null;
-  if (!raw.startsWith("/")) return null;
-  if (raw.startsWith("//")) return null;
-  if (raw.startsWith("/login")) return null;
-  return raw;
-}
-
-export default function LoginInner() {
+export default function LoginClient() {
   const router = useRouter();
-  const sp = useSearchParams();
+  const searchParams = useSearchParams();
 
-  const next = safeNext(sp.get("next")) || "/account";
+  const nextUrl = searchParams.get("next") || "/"; // default to dashboard
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -46,7 +38,7 @@ export default function LoginInner() {
       return;
     }
 
-    router.replace(next);
+    router.replace(nextUrl);
   }
 
   async function signUp() {
@@ -73,26 +65,24 @@ export default function LoginInner() {
   }
 
   async function signInWithGoogle() {
-  setMsg(null);
-  setOauthLoading(true);
+    setMsg(null);
+    setOauthLoading(true);
 
-  const next = new URLSearchParams(window.location.search).get("next") || "/";
+    // IMPORTANT: redirect back to a real page on your domain, NOT /account hardcoded.
+    // We send to /auth/callback and then that page will route to `next`.
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextUrl)}`,
+      },
+    });
 
-  const { error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
-    },
-  });
-
-  setOauthLoading(false);
-  if (error) setMsg(error.message);
-}
-
+    setOauthLoading(false);
+    if (error) setMsg(error.message);
+  }
 
   return (
     <main className="relative min-h-screen bg-black text-white flex items-center justify-center p-6">
-      {/* X button back to Dashboard */}
       <Link
         href="/"
         className="absolute right-6 top-6 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
@@ -106,7 +96,6 @@ export default function LoginInner() {
         <h1 className="text-2xl font-semibold tracking-tight">Log in</h1>
         <p className="text-sm text-white/60">Sign in to scan and save results.</p>
 
-        {/* Google OAuth */}
         <button
           onClick={signInWithGoogle}
           disabled={oauthLoading || loading}
@@ -121,7 +110,6 @@ export default function LoginInner() {
           <div className="h-px flex-1 bg-white/10" />
         </div>
 
-        {/* Email/Password */}
         <input
           className="w-full rounded-xl border border-white/10 bg-black/40 p-3 text-sm text-white outline-none placeholder:text-white/35 focus:border-white/25"
           placeholder="Email"
