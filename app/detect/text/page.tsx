@@ -198,49 +198,49 @@ export default function DetectTextPage() {
   }
 
   async function saveScan() {
-    setSaveMsg(null);
+  setSaveMsg(null);
 
-    if (!isAuthed) {
+  if (!isAuthed) {
+    window.location.href = "/login";
+    return;
+  }
+
+  if (!input.trim() || aiPercent === null) {
+    setSaveMsg("Run a scan first.");
+    return;
+  }
+
+  setSaveLoading(true);
+  try {
+    const { data: u, error: uErr } = await supabase.auth.getUser();
+    if (uErr || !u.user) {
       window.location.href = "/login";
       return;
     }
 
-    if (!input.trim() || aiPercent === null) {
-      setSaveMsg("Run a scan first.");
-      return;
-    }
+    const title = `Text scan • ${new Date().toLocaleString()}`;
+    const preview = input.trim().slice(0, 220);
 
-    setSaveLoading(true);
-    try {
-      const { data: u, error: uErr } = await supabase.auth.getUser();
-      if (uErr || !u.user) {
-        window.location.href = "/login";
-        return;
-      }
+    // Match YOUR scans table schema
+    const { error } = await supabase.from("scans").insert({
+      user_id: u.user.id,
+      kind: "text",
+      title,
+      text: input,
+      preview_text: preview,
+      // created_at auto
+    });
 
-      const title = `Text scan • ${new Date().toLocaleString()}`;
-      const preview = input.trim().slice(0, 220);
+    if (error) throw error;
 
-      // ✅ MATCH YOUR scans table columns ONLY
-      const { error } = await supabase.from("scans").insert({
-        user_id: u.user.id,
-        kind: "text",
-        title,
-        text: input,
-        preview_text: preview,
-      });
-
-      if (error) throw error;
-
-      if (!alive.current) return;
-      setSaveMsg("Saved!");
-    } catch (e: any) {
-      if (!alive.current) return;
-      setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
-    } finally {
-      if (alive.current) setSaveLoading(false);
-    }
+    setSaveMsg("Saved!");
+  } catch (e: any) {
+    setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
+  } finally {
+    setSaveLoading(false);
   }
+}
+
 
   return (
     <AppShell>

@@ -5,6 +5,23 @@ import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
 import TokenBar from "@/components/TokenBar";
 
+function clamp(n: number, a = 0, b = 100) {
+  return Math.max(a, Math.min(b, n));
+}
+
+// Donut using CSS conic-gradient (no libs)
+function donutStyle(aiPercent: number) {
+  const p = clamp(aiPercent, 0, 100);
+  return {
+    background: `conic-gradient(
+      rgba(239,68,68,0.95) 0%,
+      rgba(239,68,68,0.95) ${p}%,
+      rgba(255,255,255,0.10) ${p}%,
+      rgba(255,255,255,0.10) 100%
+    )`,
+  } as React.CSSProperties;
+}
+
 export default function DetectImagePage() {
   const [sessionReady, setSessionReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
@@ -164,67 +181,61 @@ export default function DetectImagePage() {
   }
 
   async function saveScan() {
-    setSaveMsg(null);
+  setSaveMsg(null);
 
-    if (!isAuthed) {
+  if (!isAuthed) {
+    window.location.href = "/login";
+    return;
+  }
+
+  if (!file || !result) {
+    setSaveMsg("Run a scan first.");
+    return;
+  }
+
+  setSaveLoading(true);
+  try {
+    const { data: u, error: uErr } = await supabase.auth.getUser();
+    if (uErr || !u.user) {
       window.location.href = "/login";
       return;
     }
-    if (!file || !result) {
-      setSaveMsg("Run a scan first.");
-      return;
-    }
 
-    setSaveLoading(true);
-    try {
-      const { data: u, error: uErr } = await supabase.auth.getUser();
-      if (uErr || !u.user) {
-        window.location.href = "/login";
-        return;
-      }
+    const title = `Image scan • ${new Date().toLocaleString()}`;
 
-      const title = `Image scan • ${new Date().toLocaleString()}`;
+    // Upload to Storage bucket "scan-images"
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `${u.user.id}/${Date.now()}-${safeName}`;
 
-      // Upload image to Storage (scan-images bucket)
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const path = `${u.user.id}/${Date.now()}-${safeName}`;
+    const up = await supabase.storage.from("scan-images").upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+    });
+    if (up.error) throw up.error;
 
-      const up = await supabase.storage.from("scan-images").upload(path, file, {
-        cacheControl: "3600",
-        upsert: false,
-      });
+    // Create a URL for saving in DB.
+    // If your bucket is PUBLIC, getPublicUrl works.
+    // If it’s PRIVATE, you should store the path instead (but your table has image_url).
+    const pub = supabase.storage.from("scan-images").getPublicUrl(path);
+    const imageUrl = pub.data.publicUrl;
 
-      if (up.error) throw up.error;
+    const { error } = await supabase.from("scans").insert({
+      user_id: u.user.id,
+      kind: "image",
+      title,
+      image_url: imageUrl,
+      preview_image_url: imageUrl,
+    });
 
-      // Public URL to store in scans.image_url
-      // (If your bucket is private, this URL won't work unless you change bucket policy.
-      //  But this matches your table schema.)
-      const { data: pub } = supabase.storage.from("scan-images").getPublicUrl(path);
-      const imageUrl = pub?.publicUrl || null;
+    if (error) throw error;
 
-      if (!imageUrl) throw new Error("Upload succeeded but could not generate public URL.");
-
-      // ✅ MATCH YOUR TABLE: user_id, kind, title, image_url, preview_image_url
-      const row = {
-        user_id: u.user.id,
-        kind: "image",
-        title,
-        image_url: imageUrl,
-        preview_image_url: imageUrl, // you can change this later if you generate a smaller preview
-      };
-
-      const { error } = await supabase.from("scans").insert(row);
-      if (error) throw error;
-
-      if (!alive.current) return;
-      setSaveMsg("Saved!");
-    } catch (e: any) {
-      if (!alive.current) return;
-      setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
-    } finally {
-      if (alive.current) setSaveLoading(false);
-    }
+    setSaveMsg("Saved!");
+  } catch (e: any) {
+    setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
+  } finally {
+    setSaveLoading(false);
   }
+}
 
   return (
     <AppShell>
@@ -243,7 +254,7 @@ export default function DetectImagePage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button
+              <button type="button"
                 onClick={runScan}
                 disabled={loading}
                 className="rounded-xl bg-white px-5 py-2 text-sm font-medium text-black hover:opacity-90 disabled:opacity-60"
@@ -251,7 +262,7 @@ export default function DetectImagePage() {
                 {loading ? "Scanning…" : "Scan"}
               </button>
 
-              <button
+              <button  type="button"
                 onClick={saveScan}
                 disabled={saveLoading || !result || !file}
                 className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10 disabled:opacity-40"
@@ -325,9 +336,58 @@ export default function DetectImagePage() {
                   Results will appear here after you run a scan.
                 </div>
               ) : (
-                <pre className="max-h-85 overflow-auto text-xs text-white/90">
-                  {JSON.stringify(result, null, 2)}
-                </pre>
+                <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
+  <div className="mb-3 flex items-center justify-between">
+    <div className="text-sm font-medium">Result</div>
+    {result?.aiPercent != null && result?.humanScore != null && (
+      <div className="text-xs text-white/60">
+        AI <span className="text-white/90">{Number(result.aiPercent).toFixed(0)}%</span> • Human{" "}
+        <span className="text-white/90">{Number(result.humanScore).toFixed(0)}%</span>
+      </div>
+    )}
+  </div>
+
+  <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+    {!result ? (
+      <div className="text-sm text-white/40">Results will appear here after you run a scan.</div>
+    ) : (
+      <div className="flex items-center gap-6">
+        <div
+          className="relative h-28 w-28 rounded-full"
+          style={donutStyle(Number(result.aiPercent ?? 0))}
+        >
+          <div className="absolute inset-3 rounded-full border border-white/10 bg-black/85" />
+          <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-white">
+            {Number(result.aiPercent ?? 0).toFixed(0)}%
+          </div>
+        </div>
+
+        <div className="text-sm text-white/75">
+          <div className="mb-2 font-medium text-white/90">AI Likelihood</div>
+          <div className="space-y-1">
+            <div>
+              <span className="text-white/50">AI:</span>{" "}
+              <span className="text-white">{Number(result.aiPercent ?? 0).toFixed(0)}%</span>
+            </div>
+            <div>
+              <span className="text-white/50">Human:</span>{" "}
+              <span className="text-white">{Number(result.humanScore ?? 0).toFixed(0)}%</span>
+            </div>
+          </div>
+
+          <details className="mt-3">
+            <summary className="cursor-pointer text-xs text-white/60 hover:text-white">
+              Show raw response
+            </summary>
+            <pre className="mt-2 max-h-52 overflow-auto rounded-xl border border-white/10 bg-black/50 p-3 text-xs text-white/90">
+              {JSON.stringify(result, null, 2)}
+            </pre>
+          </details>
+        </div>
+      </div>
+    )}
+  </div>
+</section>
               )}
             </div>
           </section>
