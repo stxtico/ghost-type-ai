@@ -28,7 +28,6 @@ function pillFor(label: Sent["label"]) {
   return "border-emerald-400/30 bg-emerald-500/15 text-emerald-100";
 }
 
-// Donut using CSS conic-gradient (no libs)
 function donutStyle(aiPercent: number) {
   const p = clamp(aiPercent, 0, 100);
   return {
@@ -39,46 +38,6 @@ function donutStyle(aiPercent: number) {
       rgba(255,255,255,0.10) 100%
     )`,
   } as React.CSSProperties;
-}
-
-/**
- * Tries to insert into "scans" and if your table is missing columns,
- * it will remove the unknown column and retry (prevents infinite "Saving…").
- */
-async function insertScanWithPrune(table: string, row: Record<string, any>) {
-  let working: Record<string, any> = { ...row };
-
-  // try a few times, pruning unknown columns
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const { error } = await supabase.from(table).insert(working);
-
-    if (!error) return; // success
-
-    const msg = String(error.message || "");
-
-    // common PostgREST unknown column patterns:
-    // - 'column scans.image_url does not exist'
-    // - 'Could not find the ... in the schema cache' (table/view missing)
-    const colMatch =
-      msg.match(/column\s+["']?([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)["']?\s+does not exist/i) ||
-      msg.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/i);
-
-    // if it says a column is missing, drop that key and retry
-    if (colMatch) {
-      const missingCol = colMatch[2] || colMatch[1];
-      if (missingCol && Object.prototype.hasOwnProperty.call(working, missingCol)) {
-        const next = { ...working };
-        delete next[missingCol];
-        working = next;
-        continue;
-      }
-    }
-
-    // Anything else: stop and throw the real error
-    throw error;
-  }
-
-  throw new Error("Save failed: your scans table is missing required columns.");
 }
 
 export default function DetectTextPage() {
@@ -103,7 +62,6 @@ export default function DetectTextPage() {
 
   const words = useMemo(() => wordsCount(input), [input]);
 
-  // Prevent setting state after unmount / rapid auth changes
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -144,7 +102,6 @@ export default function DetectTextPage() {
     });
   }
 
-  // Auth state
   useEffect(() => {
     let unsub: any = null;
 
@@ -200,13 +157,11 @@ export default function DetectTextPage() {
     try {
       const { data } = await supabase.auth.getSession();
       const accessToken = data.session?.access_token;
-
       if (!accessToken) {
         window.location.href = "/login";
         return;
       }
 
-      // prevent hanging forever
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 30000);
 
@@ -242,54 +197,50 @@ export default function DetectTextPage() {
     }
   }
 
-async function saveScan() {
-  setSaveMsg(null);
+  async function saveScan() {
+    setSaveMsg(null);
 
-  if (!isAuthed) {
-    window.location.href = "/login";
-    return;
-  }
-
-  if (!input.trim() || aiPercent === null) {
-    setSaveMsg("Run a scan first.");
-    return;
-  }
-
-  setSaveLoading(true);
-  try {
-    const { data: u, error: uErr } = await supabase.auth.getUser();
-    if (uErr || !u.user) {
+    if (!isAuthed) {
       window.location.href = "/login";
       return;
     }
 
-    const title = `Text scan • ${new Date().toLocaleString()}`;
+    if (!input.trim() || aiPercent === null) {
+      setSaveMsg("Run a scan first.");
+      return;
+    }
 
-    // IMPORTANT: only insert into ONE table: "scans"
-    const { error } = await supabase.from("scans").insert({
-      user_id: u.user.id,
-      type: "text",
-      title,
-      input_text: input, // make sure this column exists in scans
-      ai_percent: aiPercent, // optional but recommended
-      result: {
-        aiPercent,
-        humanScore,
-        sentences,
-        warning,
-      }, // requires a json/jsonb "result" column
-    });
+    setSaveLoading(true);
+    try {
+      const { data: u, error: uErr } = await supabase.auth.getUser();
+      if (uErr || !u.user) {
+        window.location.href = "/login";
+        return;
+      }
 
-    if (error) throw error;
+      const title = `Text scan • ${new Date().toLocaleString()}`;
+      const preview = input.trim().slice(0, 220);
 
-    setSaveMsg("Saved!");
-  } catch (e: any) {
-    setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
-  } finally {
-    setSaveLoading(false);
+      // ✅ MATCH YOUR scans table columns ONLY
+      const { error } = await supabase.from("scans").insert({
+        user_id: u.user.id,
+        kind: "text",
+        title,
+        text: input,
+        preview_text: preview,
+      });
+
+      if (error) throw error;
+
+      if (!alive.current) return;
+      setSaveMsg("Saved!");
+    } catch (e: any) {
+      if (!alive.current) return;
+      setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
+    } finally {
+      if (alive.current) setSaveLoading(false);
+    }
   }
-}
-
 
   return (
     <AppShell>
@@ -351,7 +302,6 @@ async function saveScan() {
         )}
 
         <div className="grid gap-4 lg:grid-cols-2">
-          {/* INPUT */}
           <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-sm font-medium">Input</div>
@@ -369,7 +319,6 @@ async function saveScan() {
             {warning && <div className="mt-3 text-sm text-yellow-200">{warning}</div>}
           </section>
 
-          {/* OUTPUT */}
           <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
             <div className="mb-3 flex items-center justify-between">
               <div className="text-sm font-medium">Result</div>
