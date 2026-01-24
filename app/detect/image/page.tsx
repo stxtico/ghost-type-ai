@@ -5,51 +5,6 @@ import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
 import TokenBar from "@/components/TokenBar";
 
-/**
- * Insert into scans; if your table is missing some columns,
- * remove them automatically and retry so the UI doesn’t hang.
- */
-async function insertScanWithPrune(table: string, row: Record<string, any>) {
-  let working: Record<string, any> = { ...row };
-
-  for (let attempt = 0; attempt < 6; attempt++) {
-    // add a simple timeout so "Saving..." never hangs forever
-    const controller = new AbortController();
-    const t = window.setTimeout(() => controller.abort(), 30000);
-
-    // supabase-js doesn't expose abort directly on insert,
-    // but we can still guard against long UI hangs by timing out the overall save flow.
-    const { error } = await supabase.from(table).insert(working);
-
-    window.clearTimeout(t);
-
-    if (!error) return;
-
-    const msg = String(error.message || "");
-
-    // Unknown column patterns:
-    // - 'column scans.image_url does not exist'
-    // - 'column image_url does not exist'
-    const colMatch =
-      msg.match(/column\s+["']?([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)["']?\s+does not exist/i) ||
-      msg.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/i);
-
-    if (colMatch) {
-      const missingCol = colMatch[2] || colMatch[1];
-      if (missingCol && Object.prototype.hasOwnProperty.call(working, missingCol)) {
-        const next = { ...working };
-        delete next[missingCol];
-        working = next;
-        continue;
-      }
-    }
-
-    throw error;
-  }
-
-  throw new Error("Save failed: your scans table is missing required columns.");
-}
-
 export default function DetectImagePage() {
   const [sessionReady, setSessionReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
@@ -109,6 +64,7 @@ export default function DetectImagePage() {
     });
   }
 
+  // auth state
   useEffect(() => {
     let unsub: any = null;
 
@@ -123,6 +79,7 @@ export default function DetectImagePage() {
 
       const { data: sub } = supabase.auth.onAuthStateChange(async (_evt, session) => {
         if (!alive.current) return;
+
         const nowAuthed = !!session;
         setIsAuthed(nowAuthed);
         setSessionReady(true);
@@ -141,6 +98,7 @@ export default function DetectImagePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // local preview
   useEffect(() => {
     if (!file) {
       setPreviewUrl(null);
@@ -160,7 +118,6 @@ export default function DetectImagePage() {
       window.location.href = "/login";
       return;
     }
-
     if (!file) {
       setErr("Choose an image first.");
       return;
@@ -170,7 +127,6 @@ export default function DetectImagePage() {
     try {
       const { data } = await supabase.auth.getSession();
       const accessToken = data.session?.access_token;
-
       if (!accessToken) {
         window.location.href = "/login";
         return;
@@ -193,8 +149,8 @@ export default function DetectImagePage() {
       if (!res.ok) throw new Error(json?.error || `Request failed (${res.status})`);
 
       if (!alive.current) return;
-      setResult(json);
 
+      setResult(json);
       await refreshUsage();
     } catch (e: any) {
       const msg =
@@ -214,14 +170,12 @@ export default function DetectImagePage() {
       window.location.href = "/login";
       return;
     }
-
     if (!file || !result) {
       setSaveMsg("Run a scan first.");
       return;
     }
 
     setSaveLoading(true);
-
     try {
       const { data: u, error: uErr } = await supabase.auth.getUser();
       if (uErr || !u.user) {
@@ -231,45 +185,39 @@ export default function DetectImagePage() {
 
       const title = `Image scan • ${new Date().toLocaleString()}`;
 
-      // Try to upload to Storage (optional). If it fails, we still save the scan row.
-      let imagePath: string | null = null;
+      // Upload image to Storage (scan-images bucket)
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${u.user.id}/${Date.now()}-${safeName}`;
 
-      try {
-        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const path = `${u.user.id}/${Date.now()}-${safeName}`;
+      const up = await supabase.storage.from("scan-images").upload(path, file, {
+        cacheControl: "3600",
+        upsert: false,
+      });
 
-        const up = await supabase.storage.from("scan-images").upload(path, file, {
-          cacheControl: "3600",
-          upsert: false,
-        });
+      if (up.error) throw up.error;
 
-        if (!up.error) imagePath = path;
-      } catch {
-        // ignore storage problems; still allow DB save
-      }
+      // Public URL to store in scans.image_url
+      // (If your bucket is private, this URL won't work unless you change bucket policy.
+      //  But this matches your table schema.)
+      const { data: pub } = supabase.storage.from("scan-images").getPublicUrl(path);
+      const imageUrl = pub?.publicUrl || null;
 
-      // Build a single "scans" row. If your table doesn't have some columns,
-      // insertScanWithPrune will remove them and retry.
+      if (!imageUrl) throw new Error("Upload succeeded but could not generate public URL.");
+
+      // ✅ MATCH YOUR TABLE: user_id, kind, title, image_url, preview_image_url
       const row = {
         user_id: u.user.id,
-        type: "image",
+        kind: "image",
         title,
-
-        // optional columns depending on your schema:
-        image_path: imagePath,
-        image_url: null, // if you ever store public URLs; safe to prune if missing
-        ai_percent: result?.aiPercent ?? null,
-
-        // store the whole response if you have a jsonb column (often "result")
-        result,
-
-        created_at: new Date().toISOString(),
+        image_url: imageUrl,
+        preview_image_url: imageUrl, // you can change this later if you generate a smaller preview
       };
 
-      await insertScanWithPrune("scans", row);
+      const { error } = await supabase.from("scans").insert(row);
+      if (error) throw error;
 
       if (!alive.current) return;
-      setSaveMsg(imagePath ? "Saved! (image uploaded)" : "Saved! (no image upload)");
+      setSaveMsg("Saved!");
     } catch (e: any) {
       if (!alive.current) return;
       setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
@@ -355,7 +303,11 @@ export default function DetectImagePage() {
             <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
               {previewUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={previewUrl} alt="preview" className="max-h-85 w-full rounded-xl object-contain" />
+                <img
+                  src={previewUrl}
+                  alt="preview"
+                  className="max-h-85 w-full rounded-xl object-contain"
+                />
               ) : (
                 <div className="text-sm text-white/40">Choose an image to preview it here.</div>
               )}
@@ -369,7 +321,9 @@ export default function DetectImagePage() {
 
             <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
               {!result ? (
-                <div className="text-sm text-white/40">Results will appear here after you run a scan.</div>
+                <div className="text-sm text-white/40">
+                  Results will appear here after you run a scan.
+                </div>
               ) : (
                 <pre className="max-h-85 overflow-auto text-xs text-white/90">
                   {JSON.stringify(result, null, 2)}
