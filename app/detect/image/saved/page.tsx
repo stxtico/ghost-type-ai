@@ -2,10 +2,10 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-export default function SavedImageRedirect() {
+export default function SavedImageSavedPage() {
   const r = useRouter();
   useEffect(() => {
-    r.replace("/scans?type=image");
+    r.replace("/scans/image");
   }, [r]);
   return null;
 }

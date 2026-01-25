@@ -5,15 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import AppShell from "./_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
 
-function Card({
-  title,
-  desc,
-  href,
-}: {
-  title: string;
-  desc: string;
-  href: string;
-}) {
+function Card({ title, desc, href }: { title: string; desc: string; href: string }) {
   return (
     <Link
       href={href}
@@ -35,9 +27,9 @@ function Card({
 type SavedTextScan = {
   id: string;
   title: string | null;
-  text_preview: string | null;
+  preview_text: string | null;
   created_at: string;
-  type: "text";
+  kind: "text";
 };
 
 type SavedImageScan = {
@@ -45,17 +37,14 @@ type SavedImageScan = {
   title: string | null;
   image_url: string | null;
   created_at: string;
-  type: "image";
+  kind: "image";
 };
 
 function PlaceholderGrid({ count = 3 }: { count?: number }) {
   return (
     <div className="grid gap-3 md:grid-cols-3">
       {Array.from({ length: count }).map((_, i) => (
-        <div
-          key={i}
-          className="rounded-2xl border border-dashed border-white/20 bg-white/3 p-4"
-        >
+        <div key={i} className="rounded-2xl border border-dashed border-white/20 bg-white/3 p-4">
           <div className="h-4 w-28 rounded bg-white/10" />
           <div className="mt-3 h-16 rounded-xl bg-white/5" />
           <div className="mt-3 h-8 w-28 rounded bg-white/10" />
@@ -75,13 +64,16 @@ function SavedTextCard({
   onDelete: (id: string) => void;
 }) {
   const title = (scan.title?.trim() || "Untitled").slice(0, 60);
-  const preview = (scan.text_preview || "").trim().slice(0, 130);
+  const preview = (scan.preview_text || "").trim().slice(0, 130);
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{title}</div>
+          <Link href={`/scans/text/${scan.id}`} className="block">
+            <div className="truncate text-sm font-semibold hover:underline">{title}</div>
+          </Link>
+
           <div className="mt-2 line-clamp-3 text-xs text-white/60">
             {preview || <span className="text-white/40">No text preview.</span>}
           </div>
@@ -126,16 +118,14 @@ function SavedImageCard({
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{title}</div>
+          <Link href={`/scans/image/${scan.id}`} className="block">
+            <div className="truncate text-sm font-semibold hover:underline">{title}</div>
+          </Link>
 
           <div className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black/40">
             {scan.image_url ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={scan.image_url}
-                alt={title}
-                className="h-24 w-full object-cover"
-              />
+              <img src={scan.image_url} alt={title} className="h-24 w-full object-cover" />
             ) : (
               <div className="flex h-24 items-center justify-center text-xs text-white/45">
                 No image preview
@@ -175,12 +165,8 @@ export default function Home() {
   const [savedText, setSavedText] = useState<SavedTextScan[] | null>(null);
   const [savedImages, setSavedImages] = useState<SavedImageScan[] | null>(null);
 
-  const canShowSaved = useMemo(
-    () => sessionReady && isAuthed,
-    [sessionReady, isAuthed]
-  );
+  const canShowSaved = useMemo(() => sessionReady && isAuthed, [sessionReady, isAuthed]);
 
-  // Prevent setting state after unmount / rapid auth changes
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -189,7 +175,6 @@ export default function Home() {
     };
   }, []);
 
-  // Auth state
   useEffect(() => {
     let unsub: any = null;
 
@@ -219,7 +204,6 @@ export default function Home() {
   async function loadRecent() {
     if (!alive.current) return;
 
-    // set loading state
     setSavedText(null);
     setSavedImages(null);
 
@@ -232,12 +216,13 @@ export default function Home() {
     }
 
     try {
+      // ✅ use kind= (NOT type=)
       const [tRes, iRes] = await Promise.all([
-        fetch("/api/scans?type=text", {
+        fetch("/api/scans?kind=text", {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
         }),
-        fetch("/api/scans?type=image", {
+        fetch("/api/scans?kind=image", {
           method: "GET",
           headers: { Authorization: `Bearer ${token}` },
         }),
@@ -245,7 +230,6 @@ export default function Home() {
 
       if (!alive.current) return;
 
-      // session invalid -> show empty (don’t crash)
       if (tRes.status === 401 || iRes.status === 401) {
         setSavedText([]);
         setSavedImages([]);
@@ -255,10 +239,8 @@ export default function Home() {
       const tJson = await tRes.json().catch(() => ({}));
       const iJson = await iRes.json().catch(() => ({}));
 
-      if (!tRes.ok)
-        throw new Error(tJson?.error || `Text fetch failed (${tRes.status})`);
-      if (!iRes.ok)
-        throw new Error(iJson?.error || `Image fetch failed (${iRes.status})`);
+      if (!tRes.ok) throw new Error(tJson?.error || `Text fetch failed (${tRes.status})`);
+      if (!iRes.ok) throw new Error(iJson?.error || `Image fetch failed (${iRes.status})`);
 
       const tArr = Array.isArray(tJson.scans) ? tJson.scans : [];
       const iArr = Array.isArray(iJson.scans) ? iJson.scans : [];
@@ -267,9 +249,9 @@ export default function Home() {
       const tFixed: SavedTextScan[] = tArr.slice(0, 3).map((r: any) => ({
         id: String(r.id),
         title: (r.title ?? null) as string | null,
-        text_preview: (r.text_preview ?? null) as string | null,
+        preview_text: (r.preview_text ?? r.text_preview ?? null) as string | null,
         created_at: String(r.created_at ?? new Date().toISOString()),
-        type: "text",
+        kind: "text",
       }));
 
       const iFixed: SavedImageScan[] = iArr.slice(0, 3).map((r: any) => ({
@@ -277,20 +259,18 @@ export default function Home() {
         title: (r.title ?? null) as string | null,
         image_url: (r.image_url ?? null) as string | null,
         created_at: String(r.created_at ?? new Date().toISOString()),
-        type: "image",
+        kind: "image",
       }));
 
       setSavedText(tFixed);
       setSavedImages(iFixed);
     } catch {
-      // Never crash the dashboard
       if (!alive.current) return;
       setSavedText([]);
       setSavedImages([]);
     }
   }
 
-  // Load saved scans (only if logged in)
   useEffect(() => {
     if (!canShowSaved) {
       setSavedText(null);
@@ -308,18 +288,13 @@ export default function Home() {
 
     const res = await fetch("/api/scans", {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ id, title }),
     });
 
     if (!res.ok) return;
 
-    setSavedText((prev) =>
-      prev ? prev.map((s) => (s.id === id ? { ...s, title } : s)) : prev
-    );
+    setSavedText((prev) => (prev ? prev.map((s) => (s.id === id ? { ...s, title } : s)) : prev));
   }
 
   async function deleteText(id: string) {
@@ -328,10 +303,7 @@ export default function Home() {
 
     const res = await fetch("/api/scans", {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ id }),
     });
 
@@ -347,18 +319,13 @@ export default function Home() {
 
     const res = await fetch("/api/scans", {
       method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ id, title }),
     });
 
     if (!res.ok) return;
 
-    setSavedImages((prev) =>
-      prev ? prev.map((s) => (s.id === id ? { ...s, title } : s)) : prev
-    );
+    setSavedImages((prev) => (prev ? prev.map((s) => (s.id === id ? { ...s, title } : s)) : prev));
   }
 
   async function deleteImage(id: string) {
@@ -367,10 +334,7 @@ export default function Home() {
 
     const res = await fetch("/api/scans", {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ id }),
     });
 
@@ -382,15 +346,10 @@ export default function Home() {
   return (
     <AppShell>
       <main className="px-10 py-8">
-        {/* Page header (inside content) */}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <div className="text-2xl font-semibold tracking-tight">
-              Dashboard
-            </div>
-            <div className="mt-1 text-sm text-white/60">
-              Choose a tool to get started.
-            </div>
+            <div className="text-2xl font-semibold tracking-tight">Dashboard</div>
+            <div className="mt-1 text-sm text-white/60">Choose a tool to get started.</div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -418,31 +377,18 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Big cards row */}
         <div className="grid gap-4 md:grid-cols-3">
-          <Card
-            title="Start AI Text Scan"
-            desc="Check whether text looks AI-written."
-            href="/detect/text"
-          />
-          <Card
-            title="Start AI Image Scan"
-            desc="Analyze images for AI generation."
-            href="/detect/image"
-          />
+          <Card title="Start AI Text Scan" desc="Check whether text looks AI-written." href="/detect/text" />
+          <Card title="Start AI Image Scan" desc="Analyze images for AI generation." href="/detect/image" />
         </div>
 
-        {/* Saved scans previews */}
         <div className="mt-8 grid gap-6">
-          {/* TEXT SAVED */}
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium">Saved Text Scans</div>
                 <div className="mt-1 text-xs text-white/60">
-                  {isAuthed
-                    ? "Your latest saved text scans."
-                    : "Login to see your saved scans."}
+                  {isAuthed ? "Your latest saved text scans." : "Login to see your saved scans."}
                 </div>
               </div>
 
@@ -465,34 +411,24 @@ export default function Home() {
             {!isAuthed ? (
               <PlaceholderGrid count={3} />
             ) : savedText === null ? (
-              <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">
-                Loading…
-              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">Loading…</div>
             ) : savedText.length === 0 ? (
               <PlaceholderGrid count={3} />
             ) : (
               <div className="grid gap-3 md:grid-cols-3">
                 {savedText.map((s) => (
-                  <SavedTextCard
-                    key={s.id}
-                    scan={s}
-                    onRename={renameText}
-                    onDelete={deleteText}
-                  />
+                  <SavedTextCard key={s.id} scan={s} onRename={renameText} onDelete={deleteText} />
                 ))}
               </div>
             )}
           </div>
 
-          {/* IMAGE SAVED */}
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium">Saved Image Scans</div>
                 <div className="mt-1 text-xs text-white/60">
-                  {isAuthed
-                    ? "Your latest saved image scans."
-                    : "Login to see your saved scans."}
+                  {isAuthed ? "Your latest saved image scans." : "Login to see your saved scans."}
                 </div>
               </div>
 
@@ -515,33 +451,23 @@ export default function Home() {
             {!isAuthed ? (
               <PlaceholderGrid count={3} />
             ) : savedImages === null ? (
-              <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">
-                Loading…
-              </div>
+              <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">Loading…</div>
             ) : savedImages.length === 0 ? (
               <PlaceholderGrid count={3} />
             ) : (
               <div className="grid gap-3 md:grid-cols-3">
                 {savedImages.map((s) => (
-                  <SavedImageCard
-                    key={s.id}
-                    scan={s}
-                    onRename={renameImage}
-                    onDelete={deleteImage}
-                  />
+                  <SavedImageCard key={s.id} scan={s} onRename={renameImage} onDelete={deleteImage} />
                 ))}
               </div>
             )}
           </div>
         </div>
 
-        {/* Secondary section */}
         <div className="mt-8 grid gap-4 md:grid-cols-2">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">
             <div className="text-sm font-medium">Recent</div>
-            <div className="mt-2 text-sm text-white/60">
-              We’ll expand this later with full history + filters.
-            </div>
+            <div className="mt-2 text-sm text-white/60">We’ll expand this later with full history + filters.</div>
           </div>
 
           <div className="rounded-3xl border border-white/10 bg-white/5 p-6">

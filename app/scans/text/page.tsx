@@ -1,5 +1,5 @@
-import ScansClient from "@/app/scans/ScansClient";
+import ScansClient from "../ScansClient";
 
-export default function  SavedTextScansPage() {
+export default function SavedTextScansPage() {
   return <ScansClient filterType="text" />;
 }
