@@ -99,6 +99,10 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+    if (!id || id === "undefined") {
+    setErr("Missing scan id (page routing issue).");
+    return;
+    }
 
   async function rescan() {
     setMsg(null);
@@ -145,6 +149,10 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
       setSaving(false);
     }
   }
+    if (!id || id === "undefined") {
+  setErr("Missing scan id (page routing issue).");
+  return;
+}
 
   async function saveEdits() {
     setMsg(null);

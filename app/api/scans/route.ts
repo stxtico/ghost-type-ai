@@ -9,10 +9,11 @@ const BUCKET = "scan-images";
 function getEnv() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  if (!supabaseUrl || !supabaseAnon) {
-    throw new Error("Supabase env missing (URL / ANON).");
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  if (!supabaseUrl || !supabaseAnon || !serviceRole) {
+    throw new Error("Supabase env missing (URL / ANON / SERVICE_ROLE).");
   }
-  return { supabaseUrl, supabaseAnon };
+  return { supabaseUrl, supabaseAnon, serviceRole };
 }
 
 function getBearer(req: Request) {
@@ -46,18 +47,15 @@ function pickImageUrl(row: any): string | null {
 }
 
 function pickImagePath(row: any): string | null {
-  const candidates = [row.image_path, row.path, row.storage_path];
+  const candidates = [row.image_path, row.path, row.storage_path, row.file_path];
   const found = candidates.find((x) => typeof x === "string" && x.trim().length > 0);
   return found ? String(found) : null;
 }
 
 function inferKind(row: any): ScanKind {
-  // Prefer explicit "kind" column if it exists
   const k = String(row.kind || "").toLowerCase();
   if (k === "image") return "image";
   if (k === "text") return "text";
-
-  // Fallback inference
   const hasImage = !!pickImagePath(row) || !!pickImageUrl(row);
   return hasImage ? "image" : "text";
 }
@@ -71,27 +69,28 @@ function inferAiPercent(row: any): number | null {
   return null;
 }
 
-async function ensureImageUrl(sb: any, row: any) {
+async function signedImageUrl(serviceSb: any, row: any): Promise<string | null> {
   const kind = inferKind(row);
   if (kind !== "image") return null;
 
+  // Prefer stored URL if you already store it
   let image_url = pickImageUrl(row);
   const imagePath = pickImagePath(row);
 
-  // For private bucket + RLS, signed URL requires auth (we use the user's JWT client)
   if (!image_url && imagePath) {
-    const { data: signed, error: sErr } = await sb.storage.from(BUCKET).createSignedUrl(imagePath, 3600);
-    if (!sErr && signed?.signedUrl) image_url = signed.signedUrl;
+    const { data: signed, error: sErr } = await serviceSb.storage.from(BUCKET).createSignedUrl(imagePath, 3600);
+    if (sErr) return null;
+    if (signed?.signedUrl) image_url = signed.signedUrl;
   }
 
   return image_url;
 }
 
-async function updateWithPrune(sb: any, id: string, userId: string, patch: Record<string, any>) {
+async function updateWithPrune(serviceSb: any, id: string, userId: string, patch: Record<string, any>) {
   let working = { ...patch };
 
   for (let attempt = 0; attempt < 8; attempt++) {
-    const { error } = await sb.from("scans").update(working).eq("id", id).eq("user_id", userId);
+    const { error } = await serviceSb.from("scans").update(working).eq("id", id).eq("user_id", userId);
     if (!error) return;
 
     const msg = String(error.message || "");
@@ -118,34 +117,36 @@ async function updateWithPrune(sb: any, id: string, userId: string, patch: Recor
 
 export async function GET(req: Request) {
   try {
-    const { supabaseUrl, supabaseAnon } = getEnv();
+    const { supabaseUrl, supabaseAnon, serviceRole } = getEnv();
 
     const jwt = getBearer(req);
     if (!jwt) return NextResponse.json({ error: "Missing Authorization token." }, { status: 401 });
 
-    const sb = createClient(supabaseUrl, supabaseAnon, {
+    // anon client ONLY to validate user
+    const authSb = createClient(supabaseUrl, supabaseAnon, {
       auth: { persistSession: false },
       global: { headers: { Authorization: `Bearer ${jwt}` } },
     });
 
-    const { data: userData, error: userErr } = await sb.auth.getUser();
+    const { data: userData, error: userErr } = await authSb.auth.getUser();
     if (userErr || !userData?.user) return NextResponse.json({ error: "Invalid session." }, { status: 401 });
 
     const userId = userData.user.id;
 
+    // service role for DB + storage signing
+    const serviceSb = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } });
+
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
-
-    // Accept kind= and legacy type=
     const wantKind = normalizeKind(url.searchParams.get("kind") ?? url.searchParams.get("type"));
 
     // OPEN ONE
     if (id) {
-      const { data, error } = await sb.from("scans").select("*").eq("id", id).eq("user_id", userId).single();
+      const { data, error } = await serviceSb.from("scans").select("*").eq("id", id).eq("user_id", userId).single();
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
       const kind = inferKind(data);
-      const image_url = await ensureImageUrl(sb, data);
+      const image_url = await signedImageUrl(serviceSb, data);
 
       return NextResponse.json({
         scan: {
@@ -158,7 +159,8 @@ export async function GET(req: Request) {
       });
     }
 
-    const { data: all, error: allErr } = await sb
+    // LIST
+    const { data: all, error: allErr } = await serviceSb
       .from("scans")
       .select("*")
       .eq("user_id", userId)
@@ -172,7 +174,7 @@ export async function GET(req: Request) {
     const scans = await Promise.all(
       filtered.map(async (r: any) => {
         const kind = inferKind(r);
-        const image_url = await ensureImageUrl(sb, r);
+        const image_url = await signedImageUrl(serviceSb, r);
 
         return {
           id: String(r.id),
@@ -194,24 +196,26 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const { supabaseUrl, supabaseAnon } = getEnv();
+    const { supabaseUrl, supabaseAnon, serviceRole } = getEnv();
 
     const jwt = getBearer(req);
     if (!jwt) return NextResponse.json({ error: "Missing Authorization token." }, { status: 401 });
 
-    const sb = createClient(supabaseUrl, supabaseAnon, {
+    const authSb = createClient(supabaseUrl, supabaseAnon, {
       auth: { persistSession: false },
       global: { headers: { Authorization: `Bearer ${jwt}` } },
     });
 
-    const { data: userData, error: userErr } = await sb.auth.getUser();
+    const { data: userData, error: userErr } = await authSb.auth.getUser();
     if (userErr || !userData?.user) return NextResponse.json({ error: "Invalid session." }, { status: 401 });
 
     const userId = userData.user.id;
 
     const body = await req.json().catch(() => ({}));
     const id = String(body?.id || "");
-    if (!id) return NextResponse.json({ error: "Missing id." }, { status: 400 });
+    if (!id || id === "undefined") return NextResponse.json({ error: "Missing id." }, { status: 400 });
+
+    const serviceSb = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } });
 
     const patch: Record<string, any> = {};
     if (typeof body?.title === "string") patch.title = body.title.trim() || "Untitled";
@@ -223,18 +227,7 @@ export async function PATCH(req: Request) {
 
     if (Object.keys(patch).length === 0) return NextResponse.json({ error: "No fields to update." }, { status: 400 });
 
-    // Ownership check
-    const { data: owned, error: ownErr } = await sb
-      .from("scans")
-      .select("id")
-      .eq("id", id)
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (ownErr) return NextResponse.json({ error: ownErr.message }, { status: 500 });
-    if (!owned) return NextResponse.json({ error: "Not found." }, { status: 404 });
-
-    await updateWithPrune(sb, id, userId, patch);
+    await updateWithPrune(serviceSb, id, userId, patch);
     return NextResponse.json({ ok: true, id });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
@@ -243,26 +236,28 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const { supabaseUrl, supabaseAnon } = getEnv();
+    const { supabaseUrl, supabaseAnon, serviceRole } = getEnv();
 
     const jwt = getBearer(req);
     if (!jwt) return NextResponse.json({ error: "Missing Authorization token." }, { status: 401 });
 
-    const sb = createClient(supabaseUrl, supabaseAnon, {
+    const authSb = createClient(supabaseUrl, supabaseAnon, {
       auth: { persistSession: false },
       global: { headers: { Authorization: `Bearer ${jwt}` } },
     });
 
-    const { data: userData, error: userErr } = await sb.auth.getUser();
+    const { data: userData, error: userErr } = await authSb.auth.getUser();
     if (userErr || !userData?.user) return NextResponse.json({ error: "Invalid session." }, { status: 401 });
 
     const userId = userData.user.id;
 
     const body = await req.json().catch(() => ({}));
     const id = String(body?.id || "");
-    if (!id) return NextResponse.json({ error: "Missing id." }, { status: 400 });
+    if (!id || id === "undefined") return NextResponse.json({ error: "Missing id." }, { status: 400 });
 
-    const { error } = await sb.from("scans").delete().eq("id", id).eq("user_id", userId);
+    const serviceSb = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } });
+
+    const { error } = await serviceSb.from("scans").delete().eq("id", id).eq("user_id", userId);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     return NextResponse.json({ ok: true, id });
