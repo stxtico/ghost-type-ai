@@ -14,6 +14,11 @@ function getBearer(req: Request) {
   return h.startsWith("Bearer ") ? h.slice(7) : "";
 }
 
+// ✅ Fixes browser/Vercel preflight (OPTIONS) so you don’t get random 405s
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204 });
+}
+
 export async function POST(req: Request) {
   try {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;

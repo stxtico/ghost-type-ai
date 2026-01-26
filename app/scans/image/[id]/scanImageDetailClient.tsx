@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 
-function clamp(n: number, a = 0, b = 100) {
+function clamp(n: number, a =0, b =100) {
   return Math.max(a, Math.min(b, n));
 }
 
@@ -52,7 +52,8 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
         return;
       }
 
-      const res = await fetch(`/api/scans?id=${encodeURIComponent(id)}`, {
+      // ✅ OPEN scan by id
+      const res = await fetch(`/api/scans/${encodeURIComponent(id)}`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
@@ -60,10 +61,10 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Load failed (${res.status})`);
 
-      setScan(j.scan);
-      setImageUrl(j.scan?.image_url ?? null);
+      setScan(j);
+      setImageUrl(j?.image_url ?? null);
 
-      const ap = j.scan?.ai_percent ?? j.scan?.result?.aiPercent ?? null;
+      const ap = j?.ai_percent ?? j?.result?.aiPercent ?? null;
       setAiPercent(ap != null ? Number(ap) : null);
     } catch (e: any) {
       setErr(e?.message || "Failed to load scan.");
@@ -89,13 +90,18 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
 
     setWorking(true);
     try {
-      const res = await fetch("/api/scans", {
+      const res = await fetch(`/api/scans/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id, title: next }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title: next }),
       });
+
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Rename failed (${res.status})`);
+
       setMsg("Renamed.");
       await load();
     } catch (e: any) {
@@ -116,13 +122,14 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
 
     setWorking(true);
     try {
-      const res = await fetch("/api/scans", {
+      const res = await fetch(`/api/scans/${encodeURIComponent(id)}`, {
         method: "DELETE",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ id }),
+        headers: { Authorization: `Bearer ${token}` },
       });
+
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Delete failed (${res.status})`);
+
       window.location.href = "/scans/image";
     } catch (e: any) {
       setErr(e?.message || "Delete failed.");
@@ -131,7 +138,6 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
     }
   }
 
-  // Rescan by re-uploading the existing image (fetch signed URL -> blob -> formData)
   async function rescanExisting() {
     setErr(null);
     setMsg(null);
@@ -140,14 +146,14 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
     if (!token) return;
 
     if (!imageUrl) {
-      setErr("No image_url found for this scan (API didn’t return a signed URL).");
+      setErr("No image_url found for this scan.");
       return;
     }
 
     setWorking(true);
     try {
       const imgRes = await fetch(imageUrl, { cache: "no-store" });
-      if (!imgRes.ok) throw new Error("Could not download stored image for rescan.");
+      if (!imgRes.ok) throw new Error("Could not download stored image.");
       const blob = await imgRes.blob();
 
       const form = new FormData();
@@ -165,14 +171,15 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
       const nextAi = typeof j.aiPercent === "number" ? j.aiPercent : null;
       setAiPercent(nextAi);
 
-      // save result back to scan row
-      const save = await fetch("/api/scans", {
+      const save = await fetch(`/api/scans/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          id,
           result: j,
-          ai_percent: nextAi ?? undefined,
+          ai_percent: nextAi ?? null,
         }),
       });
 
@@ -244,22 +251,17 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
         ) : (
           <div className="grid gap-4 lg:grid-cols-3">
             <section className="lg:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-6">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="text-sm font-medium">Image</div>
-              </div>
+              <div className="mb-3 text-sm font-medium">Image</div>
 
               <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
                 {imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={imageUrl}
                     alt="scan"
                     className="max-h-130 w-full rounded-xl object-contain"
                   />
                 ) : (
-                  <div className="text-sm text-white/50">
-                    No image preview. (image_url is null)
-                  </div>
+                  <div className="text-sm text-white/50">No image preview.</div>
                 )}
               </div>
             </section>
@@ -278,12 +280,8 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
                     </div>
                   </div>
                   <div className="text-sm text-white/75">
-                    <div>
-                      AI: <span className="text-white">{aiPercent.toFixed(0)}%</span>
-                    </div>
-                    <div>
-                      Human: <span className="text-white">{(100 - aiPercent).toFixed(0)}%</span>
-                    </div>
+                    <div>AI: {aiPercent.toFixed(0)}%</div>
+                    <div>Human: {(100 - aiPercent).toFixed(0)}%</div>
                   </div>
                 </div>
               )}
