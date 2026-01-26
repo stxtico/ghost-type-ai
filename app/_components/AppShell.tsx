@@ -1,9 +1,57 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { supabase } from "@/lib/supabaseClient";
+import TokenBar from "@/components/TokenBar";
+
+type Unit = "words" | "images";
+
+type BarState = {
+  label: string;
+  used: number;
+  limit: number;
+  unit: Unit;
+} | null;
+
+function clampInt(n: any, fallback = 0) {
+  const x = Number(n);
+  if (!Number.isFinite(x)) return fallback;
+  return Math.max(0, Math.floor(x));
+}
+
+function extractUsage(payload: any, tool: string): { used: number; limit: number; unit?: Unit } | null {
+  if (!payload) return null;
+
+  if (payload.tool === tool && (payload.used != null || payload.limit != null)) {
+    return { used: clampInt(payload.used, 0), limit: clampInt(payload.limit, 0), unit: payload.unit };
+  }
+
+  const u1 = payload?.usage?.[tool];
+  if (u1 && (u1.used != null || u1.limit != null)) {
+    return { used: clampInt(u1.used, 0), limit: clampInt(u1.limit, 0), unit: u1.unit };
+  }
+
+  const u2 = payload?.tools?.[tool];
+  if (u2 && (u2.used != null || u2.limit != null)) {
+    return { used: clampInt(u2.used, 0), limit: clampInt(u2.limit, 0), unit: u2.unit };
+  }
+
+  const rows = payload?.rows;
+  if (Array.isArray(rows)) {
+    const row = rows.find((r) => String(r?.tool) === tool);
+    if (row) return { used: clampInt(row.words_used ?? row.used, 0), limit: clampInt(row.limit ?? row.monthly_limit, 0), unit: row.unit };
+  }
+
+  const data = payload?.data;
+  if (Array.isArray(data)) {
+    const row = data.find((r) => String(r?.tool) === tool);
+    if (row) return { used: clampInt(row.words_used ?? row.used, 0), limit: clampInt(row.limit ?? row.monthly_limit, 0), unit: row.unit };
+  }
+
+  return null;
+}
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -12,8 +60,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [sessionReady, setSessionReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
 
-  const [name, setName] = useState<string>(""); // don’t default to Guest until ready
+  const [name, setName] = useState<string>("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  const [bar, setBar] = useState<BarState>(null);
 
   function applyUser(user: any | null) {
     const display =
@@ -57,33 +107,95 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const headerTitle =
     pathname === "/"
       ? "Dashboard"
-      : pathname.startsWith("/detect/text")
+      : pathname.includes("/detect/text")
       ? "Text Scan"
-      : pathname.startsWith("/detect/image")
+      : pathname.includes("/detect/image")
       ? "Image Scan"
-      : pathname.startsWith("/scans/text")
+      : pathname.includes("/scans/text")
       ? "Saved Text Scans"
-      : pathname.startsWith("/scans/image")
+      : pathname.includes("/scans/image")
       ? "Saved Image Scans"
-      : pathname.startsWith("/billing")
+      : pathname.includes("/billing")
       ? "Billing"
-      : pathname.startsWith("/download")
+      : pathname.includes("/download")
       ? "Download"
-      : pathname.startsWith("/account")
+      : pathname.includes("/account")
       ? "Account"
       : "Ghost Typer";
 
   function goAccountOrLogin() {
     if (!sessionReady) return;
-
-    if (isAuthed) {
-      router.push("/account");
-    } else {
-      router.push(`/login?next=${encodeURIComponent("/account")}`);
-    }
+    if (isAuthed) router.push("/account");
+    else router.push(`/login?next=${encodeURIComponent("/account")}`);
   }
 
   const showName = sessionReady ? (name || "Guest") : "Checking…";
+
+  // ✅ THIS FIXES IT: includes() catches list + detail URLs reliably
+  const barConfig = useMemo(() => {
+    const onText = pathname.includes("/detect/text") || pathname.includes("/scans/text");
+    const onImage = pathname.includes("/detect/image") || pathname.includes("/scans/image");
+
+    if (onText) return { tool: "detect_text", label: "Text Detector Tokens", unit: "words" as Unit };
+    if (onImage) return { tool: "detect_image", label: "Image Detector Credits", unit: "images" as Unit };
+    return null;
+  }, [pathname]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (!barConfig) {
+        setBar(null);
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token ?? null;
+
+      if (!token) {
+        setBar(null);
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/usage?tool=${encodeURIComponent(barConfig.tool)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (!cancelled) setBar(null);
+          return;
+        }
+
+        const parsed = extractUsage(j, barConfig.tool);
+        const used = parsed?.used ?? 0;
+        const limit = parsed?.limit ?? 0;
+
+        if (!cancelled) {
+          if (limit > 0) {
+            setBar({
+              label: barConfig.label,
+              used,
+              limit,
+              unit: (parsed?.unit as Unit) || barConfig.unit,
+            });
+          } else {
+            setBar(null);
+          }
+        }
+      } catch {
+        if (!cancelled) setBar(null);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [barConfig]);
 
   return (
     <div className="flex h-screen w-full bg-black text-white">
@@ -118,6 +230,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </div>
           </button>
         </header>
+
+        {/* ✅ Token bar */}
+        {bar && (
+          <div className="border-b border-white/10 bg-black/30 px-6 py-3">
+            <TokenBar label={bar.label} used={bar.used} limit={bar.limit} unit={bar.unit} />
+          </div>
+        )}
 
         <div className="min-w-0 flex-1 overflow-auto">{children}</div>
       </div>
