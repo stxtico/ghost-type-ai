@@ -5,20 +5,27 @@ import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 
-function clamp(n: number, a =0, b =100) {
+function clamp(n: number, a = 0, b = 100) {
   return Math.max(a, Math.min(b, n));
 }
 
-function donutStyle(aiPercent: number) {
+function AiBar({ aiPercent }: { aiPercent: number }) {
   const p = clamp(aiPercent, 0, 100);
-  return {
-    background: `conic-gradient(
-      rgba(239,68,68,0.95) 0%,
-      rgba(239,68,68,0.95) ${p}%,
-      rgba(255,255,255,0.10) ${p}%,
-      rgba(255,255,255,0.10) 100%
-    )`,
-  } as React.CSSProperties;
+  return (
+    <div className="mt-3">
+      <div className="flex items-center justify-between text-xs text-white/70">
+        <span>AI</span>
+        <span className="text-white">{p.toFixed(0)}%</span>
+      </div>
+      <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-white/10">
+        <div className="h-full rounded-full bg-white" style={{ width: `${p}%` }} />
+      </div>
+      <div className="mt-2 flex items-center justify-between text-xs text-white/55">
+        <span>Human {(100 - p).toFixed(0)}%</span>
+        <span>AI {p.toFixed(0)}%</span>
+      </div>
+    </div>
+  );
 }
 
 export default function ScanImageDetailClient({ id }: { id: string }) {
@@ -52,7 +59,6 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
         return;
       }
 
-      // ✅ OPEN scan by id
       const res = await fetch(`/api/scans/${encodeURIComponent(id)}`, {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
@@ -61,10 +67,12 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Load failed (${res.status})`);
 
-      setScan(j);
-      setImageUrl(j?.image_url ?? null);
+      const row = j?.scan ?? j;
 
-      const ap = j?.ai_percent ?? j?.result?.aiPercent ?? null;
+      setScan(row);
+      setImageUrl(row?.image_url ?? null);
+
+      const ap = row?.ai_percent ?? row?.result?.aiPercent ?? null;
       setAiPercent(ap != null ? Number(ap) : null);
     } catch (e: any) {
       setErr(e?.message || "Failed to load scan.");
@@ -92,16 +100,11 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
     try {
       const res = await fetch(`/api/scans/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ title: next }),
       });
-
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Rename failed (${res.status})`);
-
       setMsg("Renamed.");
       await load();
     } catch (e: any) {
@@ -126,10 +129,8 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
-
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Delete failed (${res.status})`);
-
       window.location.href = "/scans/image";
     } catch (e: any) {
       setErr(e?.message || "Delete failed.");
@@ -146,14 +147,14 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
     if (!token) return;
 
     if (!imageUrl) {
-      setErr("No image_url found for this scan.");
+      setErr("No image_url found for this scan (API didn’t return a signed URL).");
       return;
     }
 
     setWorking(true);
     try {
       const imgRes = await fetch(imageUrl, { cache: "no-store" });
-      if (!imgRes.ok) throw new Error("Could not download stored image.");
+      if (!imgRes.ok) throw new Error("Could not download stored image for rescan.");
       const blob = await imgRes.blob();
 
       const form = new FormData();
@@ -173,13 +174,10 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
 
       const save = await fetch(`/api/scans/${encodeURIComponent(id)}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           result: j,
-          ai_percent: nextAi ?? null,
+          ai_percent: nextAi,
         }),
       });
 
@@ -245,45 +243,30 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
         )}
 
         {loading ? (
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">
-            Loading…
-          </div>
+          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">Loading…</div>
         ) : (
           <div className="grid gap-4 lg:grid-cols-3">
             <section className="lg:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-6">
-              <div className="mb-3 text-sm font-medium">Image</div>
+              <div className="mb-3 flex items-center justify-between">
+                <div className="text-sm font-medium">Image</div>
+              </div>
 
               <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
                 {imageUrl ? (
-                  <img
-                    src={imageUrl}
-                    alt="scan"
-                    className="max-h-130 w-full rounded-xl object-contain"
-                  />
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={imageUrl} alt="scan" className="max-h-130 w-full rounded-xl object-contain" />
                 ) : (
-                  <div className="text-sm text-white/50">No image preview.</div>
+                  <div className="text-sm text-white/50">No image preview. (image_url is null)</div>
                 )}
               </div>
             </section>
 
             <aside className="rounded-3xl border border-white/10 bg-white/5 p-6">
-              <div className="text-sm font-medium">AI %</div>
-
+              <div className="text-sm font-medium">AI Score</div>
               {aiPercent == null ? (
                 <div className="mt-3 text-sm text-white/50">No score saved yet.</div>
               ) : (
-                <div className="mt-4 flex items-center gap-4">
-                  <div className="relative h-24 w-24 rounded-full" style={donutStyle(aiPercent)}>
-                    <div className="absolute inset-3 rounded-full border border-white/10 bg-black/85" />
-                    <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-white">
-                      {aiPercent.toFixed(0)}%
-                    </div>
-                  </div>
-                  <div className="text-sm text-white/75">
-                    <div>AI: {aiPercent.toFixed(0)}%</div>
-                    <div>Human: {(100 - aiPercent).toFixed(0)}%</div>
-                  </div>
-                </div>
+                <AiBar aiPercent={aiPercent} />
               )}
 
               <div className="mt-6 text-xs text-white/60">
