@@ -21,8 +21,23 @@ function getBearer(req: Request) {
   return authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
 }
 
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
 function normalizeKind(raw: string | null): ScanKind {
   return (raw || "").toLowerCase() === "image" ? "image" : "text";
+}
+
+// ✅ IMPORTANT: Winston may return 0..1. DB wants integer 0..100.
+function clampAi(n: any): number | null {
+  if (n == null) return null;
+  const x = Number(n);
+  if (!Number.isFinite(x)) return null;
+
+  const scaled = x <= 1 ? x * 100 : x; // accept 0..1 or 0..100
+  const rounded = Math.round(scaled); // integer for DB
+  return Math.max(0, Math.min(100, rounded));
 }
 
 function pickText(row: any): string {
@@ -61,11 +76,14 @@ function inferKind(row: any): ScanKind {
 }
 
 function inferAiPercent(row: any): number | null {
-  if (typeof row.ai_percent === "number") return Math.max(0, Math.min(100, row.ai_percent));
+  if (typeof row.ai_percent === "number") return clampAi(row.ai_percent);
+
   const ap = row?.result?.aiPercent;
-  if (typeof ap === "number") return Math.max(0, Math.min(100, ap));
+  if (typeof ap === "number") return clampAi(ap);
+
   const hs = row?.result?.humanScore;
-  if (typeof hs === "number") return Math.max(0, Math.min(100, 100 - hs));
+  if (typeof hs === "number") return clampAi(100 - hs);
+
   return null;
 }
 
@@ -86,27 +104,38 @@ async function signedImageUrl(serviceSb: any, row: any): Promise<string | null> 
   return image_url;
 }
 
+function pruneMissingColumnError(err: any, working: Record<string, any>) {
+  const msg = String(err?.message || "");
+  const m =
+    msg.match(/column\s+["']?([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)["']?\s+does not exist/i) ||
+    msg.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/i) ||
+    msg.match(/Could not find the '([a-zA-Z0-9_]+)'\s+column/i);
+
+  if (!m) return { removed: null as string | null, next: working };
+
+  const missing = (m as any)[2] || (m as any)[1];
+  if (!missing) return { removed: null as string | null, next: working };
+
+  if (!Object.prototype.hasOwnProperty.call(working, missing)) {
+    return { removed: null as string | null, next: working };
+  }
+
+  const next = { ...working };
+  delete next[missing];
+  return { removed: missing, next };
+}
+
 async function updateWithPrune(serviceSb: any, id: string, userId: string, patch: Record<string, any>) {
   let working = { ...patch };
 
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < 10; attempt++) {
     const { error } = await serviceSb.from("scans").update(working).eq("id", id).eq("user_id", userId);
     if (!error) return;
 
-    const msg = String(error.message || "");
-    const m =
-      msg.match(/column\s+["']?([a-zA-Z0-9_]+)\.([a-zA-Z0-9_]+)["']?\s+does not exist/i) ||
-      msg.match(/column\s+([a-zA-Z0-9_]+)\s+does not exist/i) ||
-      msg.match(/Could not find the '([a-zA-Z0-9_]+)'\s+column/i);
-
-    if (m) {
-      const missing = (m as any)[2] || (m as any)[1];
-      if (missing && Object.prototype.hasOwnProperty.call(working, missing)) {
-        const next = { ...working };
-        delete next[missing];
-        working = next;
-        continue;
-      }
+    const pruned = pruneMissingColumnError(error, working);
+    if (pruned.removed) {
+      working = pruned.next;
+      continue;
     }
 
     throw error;
@@ -115,35 +144,56 @@ async function updateWithPrune(serviceSb: any, id: string, userId: string, patch
   throw new Error("Update failed: scans table schema mismatch.");
 }
 
+async function requireUser(req: Request) {
+  const { supabaseUrl, supabaseAnon } = getEnv();
+
+  const jwt = getBearer(req);
+  if (!jwt) {
+    return {
+      userId: null as any,
+      err: NextResponse.json({ error: "Missing Authorization token." }, { status: 401 }),
+    };
+  }
+
+  const authSb = createClient(supabaseUrl, supabaseAnon, {
+    auth: { persistSession: false },
+    global: { headers: { Authorization: `Bearer ${jwt}` } },
+  });
+
+  const { data: userData, error: userErr } = await authSb.auth.getUser();
+  if (userErr || !userData?.user) {
+    return {
+      userId: null as any,
+      err: NextResponse.json({ error: "Invalid session." }, { status: 401 }),
+    };
+  }
+
+  return { userId: userData.user.id, err: null as any };
+}
+
 export async function GET(req: Request) {
   try {
-    const { supabaseUrl, supabaseAnon, serviceRole } = getEnv();
+    const { supabaseUrl, serviceRole } = getEnv();
 
-    const jwt = getBearer(req);
-    if (!jwt) return NextResponse.json({ error: "Missing Authorization token." }, { status: 401 });
+    const auth = await requireUser(req);
+    if (auth.err) return auth.err;
+    const userId = auth.userId;
 
-    // anon client ONLY to validate user
-    const authSb = createClient(supabaseUrl, supabaseAnon, {
-      auth: { persistSession: false },
-      global: { headers: { Authorization: `Bearer ${jwt}` } },
-    });
-
-    const { data: userData, error: userErr } = await authSb.auth.getUser();
-    if (userErr || !userData?.user) return NextResponse.json({ error: "Invalid session." }, { status: 401 });
-
-    const userId = userData.user.id;
-
-    // service role for DB + storage signing
     const serviceSb = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } });
 
     const url = new URL(req.url);
     const id = url.searchParams.get("id");
     const wantKind = normalizeKind(url.searchParams.get("kind") ?? url.searchParams.get("type"));
 
+    // ✅ Validate id if provided
+    if (id && !isUuid(id)) {
+      return NextResponse.json({ error: "Invalid scan id." }, { status: 400 });
+    }
+
     // OPEN ONE
     if (id) {
       const { data, error } = await serviceSb.from("scans").select("*").eq("id", id).eq("user_id", userId).single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
       const kind = inferKind(data);
       const image_url = await signedImageUrl(serviceSb, data);
@@ -196,24 +246,17 @@ export async function GET(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
-    const { supabaseUrl, supabaseAnon, serviceRole } = getEnv();
+    const { supabaseUrl, serviceRole } = getEnv();
 
-    const jwt = getBearer(req);
-    if (!jwt) return NextResponse.json({ error: "Missing Authorization token." }, { status: 401 });
-
-    const authSb = createClient(supabaseUrl, supabaseAnon, {
-      auth: { persistSession: false },
-      global: { headers: { Authorization: `Bearer ${jwt}` } },
-    });
-
-    const { data: userData, error: userErr } = await authSb.auth.getUser();
-    if (userErr || !userData?.user) return NextResponse.json({ error: "Invalid session." }, { status: 401 });
-
-    const userId = userData.user.id;
+    const auth = await requireUser(req);
+    if (auth.err) return auth.err;
+    const userId = auth.userId;
 
     const body = await req.json().catch(() => ({}));
     const id = String(body?.id || "");
-    if (!id || id === "undefined") return NextResponse.json({ error: "Missing id." }, { status: 400 });
+
+    // ✅ Validate id
+    if (!isUuid(id)) return NextResponse.json({ error: "Invalid scan id." }, { status: 400 });
 
     const serviceSb = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } });
 
@@ -222,8 +265,14 @@ export async function PATCH(req: Request) {
     if (typeof body?.input_text === "string") patch.input_text = body.input_text;
     if (typeof body?.text === "string") patch.text = body.text;
     if (typeof body?.preview_text === "string") patch.preview_text = body.preview_text;
+
+    // ✅ Save raw result (if column exists; prune will remove if not)
     if (body?.result != null) patch.result = body.result;
-    if (typeof body?.ai_percent === "number") patch.ai_percent = body.ai_percent;
+
+    // ✅ Save ai_percent as INT 0..100 (if column exists; prune will remove if not)
+    if (body?.ai_percent !== undefined) patch.ai_percent = clampAi(body.ai_percent);
+
+    // 🚫 DO NOT write updated_at
 
     if (Object.keys(patch).length === 0) return NextResponse.json({ error: "No fields to update." }, { status: 400 });
 
@@ -236,24 +285,17 @@ export async function PATCH(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const { supabaseUrl, supabaseAnon, serviceRole } = getEnv();
+    const { supabaseUrl, serviceRole } = getEnv();
 
-    const jwt = getBearer(req);
-    if (!jwt) return NextResponse.json({ error: "Missing Authorization token." }, { status: 401 });
-
-    const authSb = createClient(supabaseUrl, supabaseAnon, {
-      auth: { persistSession: false },
-      global: { headers: { Authorization: `Bearer ${jwt}` } },
-    });
-
-    const { data: userData, error: userErr } = await authSb.auth.getUser();
-    if (userErr || !userData?.user) return NextResponse.json({ error: "Invalid session." }, { status: 401 });
-
-    const userId = userData.user.id;
+    const auth = await requireUser(req);
+    if (auth.err) return auth.err;
+    const userId = auth.userId;
 
     const body = await req.json().catch(() => ({}));
     const id = String(body?.id || "");
-    if (!id || id === "undefined") return NextResponse.json({ error: "Missing id." }, { status: 400 });
+
+    // ✅ Validate id
+    if (!isUuid(id)) return NextResponse.json({ error: "Invalid scan id." }, { status: 400 });
 
     const serviceSb = createClient(supabaseUrl, serviceRole, { auth: { persistSession: false } });
 
