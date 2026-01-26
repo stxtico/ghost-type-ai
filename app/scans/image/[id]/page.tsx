@@ -1,5 +1,10 @@
 import ScanImageDetailClient from "./scanImageDetailClient";
 
-export default function Page({ params }: { params: { id: string } }) {
-  return <ScanImageDetailClient id={params.id} />;
+export default async function Page({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  return <ScanImageDetailClient id={id} />;
 }
