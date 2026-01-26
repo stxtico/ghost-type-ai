@@ -4,39 +4,74 @@ import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 
-type HL = { text: string; label: "ai" | "human" | "unsure"; score?: number };
+type HL = { text: string; label: "ai" | "human" | "unsure" };
 
 function clamp(n: number, a = 0, b = 100) {
   return Math.max(a, Math.min(b, n));
 }
 
-// Winston sometimes returns 0.41 (fraction) instead of 41 (percent)
 function normalizeAiPercent(x: any): number | null {
   if (x == null) return null;
   const n = Number(x);
   if (!Number.isFinite(n)) return null;
-  const pct = n <= 1 ? n * 100 : n;
+  const pct = n <= 1 ? n * 100 : n; // handle 0.41 => 41
   return clamp(pct, 0, 100);
 }
 
-function AiRing({ aiPercent }: { aiPercent: number }) {
+function toIntPercent(x: any): number | null {
+  const pct = normalizeAiPercent(x);
+  if (pct == null) return null;
+  return Math.round(pct);
+}
+
+function previewFromText(s: string) {
+  return (s ?? "").trim().slice(0, 260);
+}
+
+function Donut({ aiPercent }: { aiPercent: number }) {
   const p = clamp(aiPercent, 0, 100);
-  const deg = (p / 100) * 360;
+  const r = 26;
+  const c = 2 * Math.PI * r;
+  const dash = (p / 100) * c;
+
   return (
-    <div className="flex items-center gap-4">
-      <div
-        className="h-16 w-16 rounded-full border border-white/10 bg-black/30"
-        style={{
-          background: `conic-gradient(white ${deg}deg, rgba(255,255,255,0.08) 0deg)`,
-        }}
-        aria-label={`AI ${p.toFixed(0)}%`}
-        title={`AI ${p.toFixed(0)}%`}
-      />
-      <div className="text-sm">
-        <div className="text-white/80">
-          AI <span className="text-white font-medium">{p.toFixed(0)}%</span>
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="relative h-16 w-16">
+          <svg viewBox="0 0 64 64" className="h-16 w-16 -rotate-90">
+            <circle
+              cx="32"
+              cy="32"
+              r={r}
+              fill="none"
+              stroke="rgba(255,255,255,0.10)"
+              strokeWidth="8"
+            />
+            <circle
+              cx="32"
+              cy="32"
+              r={r}
+              fill="none"
+              stroke="white"
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={`${dash} ${c - dash}`}
+            />
+          </svg>
+
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="text-sm font-semibold text-white">{p.toFixed(0)}%</div>
+          </div>
         </div>
-        <div className="text-white/50">Human {(100 - p).toFixed(0)}%</div>
+
+        <div className="text-sm text-white/80">
+          <div className="font-medium text-white">AI {p.toFixed(0)}%</div>
+          <div className="text-white/55">Human {(100 - p).toFixed(0)}%</div>
+        </div>
+      </div>
+
+      <div className="text-xs text-white/70">
+        AI {p.toFixed(0)}% • Human {(100 - p).toFixed(0)}%
       </div>
     </div>
   );
@@ -52,25 +87,16 @@ function classForLabel(label: HL["label"]) {
   return "bg-green-500/15 border border-green-500/25 text-green-100";
 }
 
-/**
- * Tries to read highlight/sentence data from whatever shape you have saved in `result`.
- * Supports common shapes:
- * - result.sentences: [{ text, label/klass/type, score }]
- * - result.highlights: [{ text, label }]
- * - result.segments: [{ text, label }]
- * If nothing exists, returns [].
- */
-function extractHighlights(result: any, fallbackText: string): HL[] {
+function extractHighlights(result: any): HL[] {
   const pickLabel = (raw: any): HL["label"] => {
     const s = String(raw ?? "").toLowerCase();
     if (s.includes("ai") || s.includes("machine")) return "ai";
     if (s.includes("unsure") || s.includes("mixed") || s.includes("maybe")) return "unsure";
     if (s.includes("human")) return "human";
-    // If score exists and is numeric, guess label
     return "human";
   };
 
-  const tryArrays = [
+  const arrays = [
     result?.sentences,
     result?.highlights,
     result?.segments,
@@ -78,27 +104,20 @@ function extractHighlights(result: any, fallbackText: string): HL[] {
     result?.data?.highlights,
   ];
 
-  for (const arr of tryArrays) {
+  for (const arr of arrays) {
     if (Array.isArray(arr) && arr.length) {
       const out: HL[] = arr
         .map((s: any) => {
           const text = typeof s?.text === "string" ? s.text : typeof s === "string" ? s : "";
           if (!text.trim()) return null;
-
           const label = pickLabel(s?.label ?? s?.type ?? s?.class ?? s?.klass ?? s?.prediction);
-          const scoreNum = s?.score ?? s?.prob ?? s?.probability ?? s?.ai ?? null;
-          const score = scoreNum != null && Number.isFinite(Number(scoreNum)) ? Number(scoreNum) : undefined;
-
-          return { text, label, score };
+          return { text, label };
         })
         .filter(Boolean) as HL[];
-
       if (out.length) return out;
     }
   }
 
-  // No highlight structure saved
-  if (!fallbackText?.trim()) return [];
   return [];
 }
 
@@ -146,16 +165,34 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
 
       setScan(row);
 
-      const ap = normalizeAiPercent(row?.ai_percent ?? row?.result?.aiPercent ?? row?.result?.ai_percent ?? null);
-      setAiPercent(ap);
+      function computeAiPercentInt(row: any): number | null {
+  const r = row?.result ?? null;
 
-      const textVal = typeof row?.text === "string" ? row.text : "";
-      const hl = extractHighlights(row?.result, textVal);
-      setHighlights(hl);
+  // Prefer explicit AI percent
+  const a1 = toIntPercent(r?.aiPercent ?? r?.ai_percent ?? null);
+  if (a1 != null) return a1;
+
+  // If API returns "human", convert to AI
+  const h1 = normalizeAiPercent(r?.humanScore ?? r?.humanPercent ?? r?.human_percent ?? null);
+  if (h1 != null) return Math.round(100 - h1);
+
+  // Fallback to stored column
+  const a2 = toIntPercent(row?.ai_percent ?? null);
+  if (a2 != null) return a2;
+
+  return null;
+}
+
+// ...
+const ap = computeAiPercentInt(row);
+setAiPercent(ap);
+
+
+      setHighlights(extractHighlights(row?.result));
 
       if (lastLoadedId.current !== row?.id) {
         lastLoadedId.current = row?.id ?? null;
-        setDraft(textVal);
+        setDraft(typeof row?.text === "string" ? row.text : "");
       }
     } catch (e: any) {
       setErr(e?.message || "Failed to load scan.");
@@ -206,12 +243,18 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
     const token = await getToken();
     if (!token) return;
 
+    const nextText = draft ?? "";
+    const preview_text = previewFromText(nextText);
+
     setWorking(true);
     try {
       const res = await fetch(`/api/scans/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ text: draft }),
+        body: JSON.stringify({
+          text: nextText,
+          preview_text, // ✅ keeps list preview up to date
+        }),
       });
 
       const j = await res.json().catch(() => ({}));
@@ -226,7 +269,7 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
     }
   }
 
-  // (Optional) keep your rescan button as-is, but normalize aiPercent before saving so you never get 0.41 -> int errors
+  // ✅ RESCAN (TEXT ONLY)
   async function rescanText() {
     setErr(null);
     setMsg(null);
@@ -251,16 +294,21 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || `Rescan failed (${res.status})`);
 
-      const nextAi = normalizeAiPercent(j.aiPercent);
-      setAiPercent(nextAi);
+      const nextAiInt = toIntPercent(j?.aiPercent ?? j?.ai_percent ?? null);
+      setAiPercent(nextAiInt);
+      setHighlights(extractHighlights(j));
 
+      const preview_text = previewFromText(textToScan);
+
+      // Save scan: store integer ai_percent + result payload + preview_text
       const save = await fetch(`/api/scans/${encodeURIComponent(id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           text: textToScan,
+          preview_text, // ✅ keeps list preview up to date
           result: j,
-          ai_percent: nextAi == null ? null : Math.round(nextAi), // store int percent
+          ai_percent: nextAiInt, // ✅ integer
         }),
       });
 
@@ -323,6 +371,7 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
           >
             Rename
           </button>
+
           <button
             onClick={rescanText}
             disabled={working || loading}
@@ -330,6 +379,7 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
           >
             Rescan
           </button>
+
           <button
             onClick={saveEdits}
             disabled={working || loading}
@@ -337,6 +387,7 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
           >
             Save
           </button>
+
           <button
             onClick={deleteScan}
             disabled={working || loading}
@@ -374,40 +425,35 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
           <aside className="rounded-3xl border border-white/10 bg-white/5 p-6">
             <div className="text-sm font-medium">Result</div>
 
-            {aiPercent == null ? (
-              <div className="mt-3 text-sm text-white/50">No score saved yet.</div>
-            ) : (
-              <div className="mt-3">
-                <AiRing aiPercent={aiPercent} />
-              </div>
-            )}
-
-            <div className="mt-5">
-              <div className="text-xs text-white/70">Highlight legend</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {legendPill("bg-red-500/15 border border-red-500/25 text-red-100", "Red: likely AI")}
-                {legendPill("bg-yellow-500/15 border border-yellow-500/25 text-yellow-100", "Yellow: unsure")}
-                {legendPill("bg-green-500/15 border border-green-500/25 text-green-100", "Green: likely human")}
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-2xl border border-white/10 bg-black/40 p-3">
-              {highlights.length === 0 ? (
-                <div className="text-sm text-white/50">
-                  No highlight data saved for this scan.
-                  <div className="mt-1 text-xs text-white/40">
-                    (If you want highlights here, your /api/scans save must store the full result object with sentence data.)
-                  </div>
-                </div>
+            <div className="mt-3 rounded-2xl border border-white/10 bg-black/40 p-4">
+              {aiPercent == null ? (
+                <div className="text-sm text-white/50">No score saved yet.</div>
               ) : (
-                <div className="max-h-72 space-y-2 overflow-auto pr-1">
-                  {highlights.map((h, idx) => (
-                    <div key={idx} className={`rounded-xl px-3 py-2 text-sm ${classForLabel(h.label)}`}>
-                      {h.text}
-                    </div>
-                  ))}
-                </div>
+                <Donut aiPercent={aiPercent} />
               )}
+
+              <div className="mt-4">
+                <div className="text-xs text-white/70">Highlight legend</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {legendPill("bg-red-500/15 border border-red-500/25 text-red-100", "Red: likely AI")}
+                  {legendPill("bg-yellow-500/15 border border-yellow-500/25 text-yellow-100", "Yellow: unsure")}
+                  {legendPill("bg-green-500/15 border border-green-500/25 text-green-100", "Green: likely human")}
+                </div>
+              </div>
+
+              <div className="mt-4">
+                {highlights.length === 0 ? (
+                  <div className="text-sm text-white/50">No highlight data saved for this scan.</div>
+                ) : (
+                  <div className="max-h-72 space-y-2 overflow-auto pr-1">
+                    {highlights.map((h, idx) => (
+                      <div key={idx} className={`rounded-xl px-3 py-2 text-sm ${classForLabel(h.label)}`}>
+                        {h.text}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="mt-6 text-xs text-white/60">
