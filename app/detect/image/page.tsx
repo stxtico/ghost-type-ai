@@ -9,7 +9,6 @@ function clamp(n: number, a = 0, b = 100) {
   return Math.max(a, Math.min(b, n));
 }
 
-// Donut using CSS conic-gradient (no libs)
 function donutStyle(aiPercent: number) {
   const p = clamp(aiPercent, 0, 100);
   return {
@@ -20,6 +19,24 @@ function donutStyle(aiPercent: number) {
       rgba(255,255,255,0.10) 100%
     )`,
   } as React.CSSProperties;
+}
+
+// ✅ normalize anything -> integer 0..100 (handles 0.41, 41, "41", etc.)
+function normalizeAiPercent(payload: any): number | null {
+  const raw =
+    payload?.aiPercent ??
+    payload?.ai_percent ??
+    payload?.result?.aiPercent ??
+    payload?.result?.ai_percent;
+
+  if (raw == null) return null;
+
+  const x = Number(raw);
+  if (!Number.isFinite(x)) return null;
+
+  // if model returns 0..1, convert to percent
+  const pct = x <= 1 ? x * 100 : x;
+  return Math.max(0, Math.min(100, Math.round(pct)));
 }
 
 export default function DetectImagePage() {
@@ -81,7 +98,6 @@ export default function DetectImagePage() {
     });
   }
 
-  // auth state
   useEffect(() => {
     let unsub: any = null;
 
@@ -115,7 +131,6 @@ export default function DetectImagePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // local preview
   useEffect(() => {
     if (!file) {
       setPreviewUrl(null);
@@ -180,62 +195,72 @@ export default function DetectImagePage() {
     }
   }
 
+  // ✅ FIXED: saves ai_percent + result + image_url + image_path
   async function saveScan() {
-  setSaveMsg(null);
+    setSaveMsg(null);
 
-  if (!isAuthed) {
-    window.location.href = "/login";
-    return;
-  }
-
-  if (!file || !result) {
-    setSaveMsg("Run a scan first.");
-    return;
-  }
-
-  setSaveLoading(true);
-  try {
-    const { data: u, error: uErr } = await supabase.auth.getUser();
-    if (uErr || !u.user) {
+    if (!isAuthed) {
       window.location.href = "/login";
       return;
     }
 
-    const title = `Image scan • ${new Date().toLocaleString()}`;
+    if (!file || !result) {
+      setSaveMsg("Run a scan first.");
+      return;
+    }
 
-    // Upload to Storage bucket "scan-images"
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const path = `${u.user.id}/${Date.now()}-${safeName}`;
+    setSaveLoading(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user ?? null;
+      if (!user) {
+        window.location.href = "/login";
+        return;
+      }
 
-    const up = await supabase.storage.from("scan-images").upload(path, file, {
-      cacheControl: "3600",
-      upsert: false,
-    });
-    if (up.error) throw up.error;
+      const title = `Image scan • ${new Date().toLocaleString()}`;
 
-    // Create a URL for saving in DB.
-    // If your bucket is PUBLIC, getPublicUrl works.
-    // If it’s PRIVATE, you should store the path instead (but your table has image_url).
-    const pub = supabase.storage.from("scan-images").getPublicUrl(path);
-    const imageUrl = pub.data.publicUrl;
+      // Upload to Storage bucket "scan-images" (PUBLIC now)
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const path = `${user.id}/${Date.now()}-${safeName}`;
 
-    const { error } = await supabase.from("scans").insert({
-      user_id: u.user.id,
-      kind: "image",
-      title,
-      image_url: imageUrl,
-      preview_image_url: imageUrl,
-    });
+      const up = await supabase.storage.from("scan-images").upload(path, file, {
+        cacheControl: "3600",
+        upsert: false,
+        contentType: file.type || "image/jpeg",
+      });
+      if (up.error) throw up.error;
 
-    if (error) throw error;
+      // public URL works since bucket is public
+      const pub = supabase.storage.from("scan-images").getPublicUrl(path);
+      const imageUrl = pub.data.publicUrl;
 
-    setSaveMsg("Saved!");
-  } catch (e: any) {
-    setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
-  } finally {
-    setSaveLoading(false);
+      const aiPct = normalizeAiPercent(result);
+
+      const { error } = await supabase.from("scans").insert({
+        user_id: user.id,
+        kind: "image",
+        title,
+        image_path: path, // ✅ used for deletion later
+        image_url: imageUrl,
+        preview_image_url: imageUrl,
+
+        // ✅ save results
+        result: result,
+        ai_percent: aiPct,
+      });
+
+      if (error) throw error;
+
+      setSaveMsg("Saved!");
+    } catch (e: any) {
+      setSaveMsg(`Save failed: ${e?.message || "Unknown error"}`);
+    } finally {
+      setSaveLoading(false);
+    }
   }
-}
+
+  const aiPctNow = normalizeAiPercent(result) ?? 0;
 
   return (
     <AppShell>
@@ -254,7 +279,8 @@ export default function DetectImagePage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <button type="button"
+              <button
+                type="button"
                 onClick={runScan}
                 disabled={loading}
                 className="rounded-xl bg-white px-5 py-2 text-sm font-medium text-black hover:opacity-90 disabled:opacity-60"
@@ -262,7 +288,8 @@ export default function DetectImagePage() {
                 {loading ? "Scanning…" : "Scan"}
               </button>
 
-              <button  type="button"
+              <button
+                type="button"
                 onClick={saveScan}
                 disabled={saveLoading || !result || !file}
                 className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10 disabled:opacity-40"
@@ -276,12 +303,7 @@ export default function DetectImagePage() {
         {isAuthed && (
           <div className="mb-4">
             {usage ? (
-              <TokenBar
-                label="Image Detector Tokens"
-                used={usage.used}
-                limit={usage.limit}
-                unit={(usage.unit as any) || "images"}
-              />
+              <TokenBar label="Image Detector Tokens" used={usage.used} limit={usage.limit} unit={(usage.unit as any) || "images"} />
             ) : (
               <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
                 {usageErr ? `Tokens: ${usageErr}` : "Loading tokens…"}
@@ -314,11 +336,7 @@ export default function DetectImagePage() {
             <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
               {previewUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={previewUrl}
-                  alt="preview"
-                  className="max-h-85 w-full rounded-xl object-contain"
-                />
+                <img src={previewUrl} alt="preview" className="max-h-85 w-full rounded-xl object-contain" />
               ) : (
                 <div className="text-sm text-white/40">Choose an image to preview it here.</div>
               )}
@@ -332,62 +350,26 @@ export default function DetectImagePage() {
 
             <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
               {!result ? (
-                <div className="text-sm text-white/40">
-                  Results will appear here after you run a scan.
-                </div>
+                <div className="text-sm text-white/40">Results will appear here after you run a scan.</div>
               ) : (
-                <section className="rounded-3xl border border-white/10 bg-white/5 p-6">
-  <div className="mb-3 flex items-center justify-between">
-    <div className="text-sm font-medium">Result</div>
-    {result?.aiPercent != null && result?.humanScore != null && (
-      <div className="text-xs text-white/60">
-        AI <span className="text-white/90">{Number(result.aiPercent).toFixed(0)}%</span> • Human{" "}
-        <span className="text-white/90">{Number(result.humanScore).toFixed(0)}%</span>
-      </div>
-    )}
-  </div>
+                <div className="flex items-center gap-6">
+                  <div className="relative h-28 w-28 rounded-full" style={donutStyle(aiPctNow)}>
+                    <div className="absolute inset-3 rounded-full border border-white/10 bg-black/85" />
+                    <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-white">
+                      {aiPctNow}%
+                    </div>
+                  </div>
 
-  <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
-    {!result ? (
-      <div className="text-sm text-white/40">Results will appear here after you run a scan.</div>
-    ) : (
-      <div className="flex items-center gap-6">
-        <div
-          className="relative h-28 w-28 rounded-full"
-          style={donutStyle(Number(result.aiPercent ?? 0))}
-        >
-          <div className="absolute inset-3 rounded-full border border-white/10 bg-black/85" />
-          <div className="absolute inset-0 flex items-center justify-center text-sm font-semibold text-white">
-            {Number(result.aiPercent ?? 0).toFixed(0)}%
-          </div>
-        </div>
-
-        <div className="text-sm text-white/75">
-          <div className="mb-2 font-medium text-white/90">AI Likelihood</div>
-          <div className="space-y-1">
-            <div>
-              <span className="text-white/50">AI:</span>{" "}
-              <span className="text-white">{Number(result.aiPercent ?? 0).toFixed(0)}%</span>
-            </div>
-            <div>
-              <span className="text-white/50">Human:</span>{" "}
-              <span className="text-white">{Number(result.humanScore ?? 0).toFixed(0)}%</span>
-            </div>
-          </div>
-
-          <details className="mt-3">
-            <summary className="cursor-pointer text-xs text-white/60 hover:text-white">
-              Show raw response
-            </summary>
-            <pre className="mt-2 max-h-52 overflow-auto rounded-xl border border-white/10 bg-black/50 p-3 text-xs text-white/90">
-              {JSON.stringify(result, null, 2)}
-            </pre>
-          </details>
-        </div>
-      </div>
-    )}
-  </div>
-</section>
+                  <div className="text-sm text-white/75">
+                    <div className="mb-2 font-medium text-white/90">AI Likelihood</div>
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs text-white/60 hover:text-white">Show raw response</summary>
+                      <pre className="mt-2 max-h-52 overflow-auto rounded-xl border border-white/10 bg-black/50 p-3 text-xs text-white/90">
+                        {JSON.stringify(result, null, 2)}
+                      </pre>
+                    </details>
+                  </div>
+                </div>
               )}
             </div>
           </section>

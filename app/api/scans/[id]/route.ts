@@ -9,20 +9,6 @@ function getBearer(req: Request) {
   return h.startsWith("Bearer ") ? h.slice(7) : "";
 }
 
-function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
-}
-
-// Accepts 0-1 or 0-100 and returns INT 0-100
-function normalizePercent(v: any): number | null {
-  if (v == null) return null;
-  const n = Number(v);
-  if (!Number.isFinite(n)) return null;
-  const scaled = n <= 1 ? n * 100 : n;
-  const rounded = Math.round(scaled);
-  return Math.max(0, Math.min(100, rounded));
-}
-
 function makeSupabase(token: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -59,33 +45,21 @@ async function requireUser(req: Request) {
 
 type Ctx = { params: Promise<{ id: string }> };
 
-async function getId(ctx: Ctx): Promise<string | null> {
-  try {
-    const p = await ctx.params;
-    const id = p?.id;
-    if (typeof id === "string" && isUuid(id)) return id;
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 export async function GET(req: NextRequest, ctx: Ctx) {
   try {
-    const id = await getId(ctx);
-    if (!id) return NextResponse.json({ error: "Invalid or missing scan id." }, { status: 400 });
+    const { id } = await ctx.params;
+    if (!id || id === "undefined") return NextResponse.json({ error: "Missing scan id." }, { status: 400 });
 
     const auth = await requireUser(req);
     if (auth.err) return auth.err;
 
-    const { data, error } = await auth.supabase
-      .from("scans")
-      .select("*")
-      .eq("id", id)
-      .eq("user_id", auth.userId)
-      .single();
+    const { data, error } = await auth.supabase.from("scans").select("*").eq("id", id).single();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!data) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
-    if (error || !data) return NextResponse.json({ error: "Not found." }, { status: 404 });
+    if (data.user_id && data.user_id !== auth.userId) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
 
     return NextResponse.json({ scan: data });
   } catch (e: any) {
@@ -95,8 +69,8 @@ export async function GET(req: NextRequest, ctx: Ctx) {
 
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
-    const id = await getId(ctx);
-    if (!id) return NextResponse.json({ error: "Invalid or missing scan id." }, { status: 400 });
+    const { id } = await ctx.params;
+    if (!id || id === "undefined") return NextResponse.json({ error: "Missing scan id." }, { status: 400 });
 
     const auth = await requireUser(req);
     if (auth.err) return auth.err;
@@ -104,32 +78,24 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     const body = await req.json().catch(() => ({}));
 
     const updates: Record<string, any> = {};
-    if (typeof body.title === "string") updates.title = body.title.trim() || "Untitled";
+    if (typeof body.title === "string") updates.title = body.title;
     if (typeof body.text === "string") updates.text = body.text;
-    if (typeof body.input_text === "string") updates.input_text = body.input_text;
-    if (typeof body.preview_text === "string") updates.preview_text = body.preview_text;
 
+    // ✅ allow saving result + ai_percent if columns exist
     if (body.result !== undefined) updates.result = body.result;
-
-    // ✅ normalize to INT 0-100
-    if (body.ai_percent !== undefined) updates.ai_percent = normalizePercent(body.ai_percent);
+    if (body.ai_percent !== undefined) updates.ai_percent = body.ai_percent;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No valid fields to update." }, { status: 400 });
     }
 
-    // 🚫 DO NOT write updated_at (your table doesn't have it)
-
-    const { data, error } = await auth.supabase
-      .from("scans")
-      .update(updates)
-      .eq("id", id)
-      .eq("user_id", auth.userId)
-      .select("*")
-      .single();
-
+    const { data, error } = await auth.supabase.from("scans").update(updates).eq("id", id).select("*").single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data) return NextResponse.json({ error: "Not found." }, { status: 404 });
+
+    if (data.user_id && data.user_id !== auth.userId) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
 
     return NextResponse.json({ scan: data });
   } catch (e: any) {
@@ -139,16 +105,46 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
 
 export async function DELETE(req: NextRequest, ctx: Ctx) {
   try {
-    const id = await getId(ctx);
-    if (!id) return NextResponse.json({ error: "Invalid or missing scan id." }, { status: 400 });
+    const { id } = await ctx.params;
+    if (!id || id === "undefined") return NextResponse.json({ error: "Missing scan id." }, { status: 400 });
 
     const auth = await requireUser(req);
     if (auth.err) return auth.err;
 
-    const { error } = await auth.supabase.from("scans").delete().eq("id", id).eq("user_id", auth.userId);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // 1) Read scan to get owner + image_path
+    const { data: existing, error: readErr } = await auth.supabase
+      .from("scans")
+      .select("id,user_id,kind,image_path")
+      .eq("id", id)
+      .single();
 
-    return NextResponse.json({ ok: true, id });
+    if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
+    if (!existing) return NextResponse.json({ error: "Not found." }, { status: 404 });
+
+    if (existing.user_id && existing.user_id !== auth.userId) {
+      return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+    }
+
+    // 2) Delete file from storage if it exists
+    const isImage = String(existing.kind || "").toLowerCase() === "image";
+    const imagePath = existing.image_path ? String(existing.image_path) : null;
+
+    if (isImage && imagePath) {
+      // bucket name must match what you upload to
+      const { error: storageErr } = await auth.supabase.storage.from("scan-images").remove([imagePath]);
+      // If storage delete fails, we still attempt DB delete but report warning
+      if (storageErr) {
+        // still proceed (don’t strand DB row)
+        // you can surface this to UI if you want
+        console.warn("Storage delete failed:", storageErr.message);
+      }
+    }
+
+    // 3) Delete DB row
+    const { error: delErr } = await auth.supabase.from("scans").delete().eq("id", id);
+    if (delErr) return NextResponse.json({ error: delErr.message }, { status: 500 });
+
+    return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
