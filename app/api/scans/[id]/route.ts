@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -22,21 +23,36 @@ function makeSupabase(token: string) {
 async function requireUser(req: Request) {
   const token = getBearer(req);
   if (!token) {
-    return { supabase: null as any, userId: null as any, err: NextResponse.json({ error: "Missing Authorization token (Bearer)." }, { status: 401 }) };
+    return {
+      supabase: null as any,
+      userId: null as any,
+      err: NextResponse.json(
+        { error: "Missing Authorization token (Bearer)." },
+        { status: 401 }
+      ),
+    };
   }
 
   const supabase = makeSupabase(token);
   const { data: userData, error: userErr } = await supabase.auth.getUser();
   if (userErr || !userData?.user) {
-    return { supabase: null as any, userId: null as any, err: NextResponse.json({ error: "Invalid session." }, { status: 401 }) };
+    return {
+      supabase: null as any,
+      userId: null as any,
+      err: NextResponse.json({ error: "Invalid session." }, { status: 401 }),
+    };
   }
 
   return { supabase, userId: userData.user.id, err: null as any };
 }
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+// ✅ Next 15: params is a Promise
+type Ctx = { params: Promise<{ id: string }> };
+
+export async function GET(req: NextRequest, ctx: Ctx) {
   try {
-    const id = params?.id;
+    const { id } = await ctx.params;
+
     if (!id || id === "undefined") {
       return NextResponse.json({ error: "Missing scan id." }, { status: 400 });
     }
@@ -53,7 +69,6 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
-    // Extra guard (RLS should also enforce this)
     if (data.user_id && data.user_id !== auth.userId) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
@@ -64,9 +79,10 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, ctx: Ctx) {
   try {
-    const id = params?.id;
+    const { id } = await ctx.params;
+
     if (!id || id === "undefined") {
       return NextResponse.json({ error: "Missing scan id." }, { status: 400 });
     }
@@ -76,7 +92,6 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
     const body = await req.json().catch(() => ({}));
 
-    // Only allow fields you actually want editable:
     const updates: Record<string, any> = {};
     if (typeof body.title === "string") updates.title = body.title;
     if (typeof body.text === "string") updates.text = body.text;
@@ -107,9 +122,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: NextRequest, ctx: Ctx) {
   try {
-    const id = params?.id;
+    const { id } = await ctx.params;
+
     if (!id || id === "undefined") {
       return NextResponse.json({ error: "Missing scan id." }, { status: 400 });
     }
@@ -117,14 +133,15 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
     const auth = await requireUser(req);
     if (auth.err) return auth.err;
 
-    // Optional: ensure it exists + owned before delete
-    const { data: existing } = await auth.supabase
+    const { data: existing, error: readErr } = await auth.supabase
       .from("scans")
       .select("id,user_id")
       .eq("id", id)
       .single();
 
+    if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
     if (!existing) return NextResponse.json({ error: "Not found." }, { status: 404 });
+
     if (existing.user_id && existing.user_id !== auth.userId) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
