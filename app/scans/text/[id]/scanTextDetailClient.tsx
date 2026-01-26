@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 
@@ -223,89 +222,83 @@ export default function ScanTextDetailClient({ id }: { id: string }) {
   }
 
   return (
-    <AppShell>
-      <main className="px-10 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <div className="text-2xl font-semibold tracking-tight">Saved Text Scan</div>
-            <div className="mt-1 text-sm text-white/60">
-              <Link className="underline hover:opacity-80" href="/scans/text">
-                Back to list
-              </Link>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={rename}
-              disabled={working || loading}
-              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10 disabled:opacity-40"
-            >
-              Rename
-            </button>
-            <button
-              onClick={rescanText}
-              disabled={working || loading}
-              className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:opacity-90 disabled:opacity-60"
-            >
-              Rescan
-            </button>
-            <button
-              onClick={saveEdits}
-              disabled={working || loading}
-              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10 disabled:opacity-40"
-            >
-              Save
-            </button>
-            <button
-              onClick={deleteScan}
-              disabled={working || loading}
-              className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-2 text-sm text-red-100 hover:bg-red-500/15 disabled:opacity-40"
-            >
-              Delete
-            </button>
+    <main className="px-10 py-8">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <div className="text-2xl font-semibold tracking-tight">Saved Text Scan</div>
+          <div className="mt-1 text-sm text-white/60">
+            <Link className="underline hover:opacity-80" href="/scans/text">
+              Back to list
+            </Link>
           </div>
         </div>
 
-        {err && (
-          <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-            {err}
-          </div>
-        )}
-        {msg && (
-          <div className="mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
-            {msg}
-          </div>
-        )}
+        <div className="flex gap-2">
+          <button
+            onClick={rename}
+            disabled={working || loading}
+            className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10 disabled:opacity-40"
+          >
+            Rename
+          </button>
+          <button
+            onClick={rescanText}
+            disabled={working || loading}
+            className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:opacity-90 disabled:opacity-60"
+          >
+            Rescan
+          </button>
+          <button
+            onClick={saveEdits}
+            disabled={working || loading}
+            className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10 disabled:opacity-40"
+          >
+            Save
+          </button>
+          <button
+            onClick={deleteScan}
+            disabled={working || loading}
+            className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-2 text-sm text-red-100 hover:bg-red-500/15 disabled:opacity-40"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
 
-        {loading ? (
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">Loading…</div>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-3">
-            <section className="lg:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-6">
-              <div className="mb-3 text-sm font-medium">Text</div>
-              <textarea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                className="min-h-90 w-full rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white outline-none"
-              />
-            </section>
+      {err && (
+        <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          {err}
+        </div>
+      )}
+      {msg && (
+        <div className="mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
+          {msg}
+        </div>
+      )}
 
-            <aside className="rounded-3xl border border-white/10 bg-white/5 p-6">
-              <div className="text-sm font-medium">AI Score</div>
-              {aiPercent == null ? (
-                <div className="mt-3 text-sm text-white/50">No score saved yet.</div>
-              ) : (
-                <AiBar aiPercent={aiPercent} />
-              )}
+      {loading ? (
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">Loading…</div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <section className="lg:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-6">
+            <div className="mb-3 text-sm font-medium">Text</div>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              className="min-h-90 w-full rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white outline-none"
+            />
+          </section>
 
-              <div className="mt-6 text-xs text-white/60">
-                Created: {scan?.created_at ? new Date(scan.created_at).toLocaleString() : "—"}
-              </div>
-            </aside>
-          </div>
-        )}
-      </main>
-    </AppShell>
+          <aside className="rounded-3xl border border-white/10 bg-white/5 p-6">
+            <div className="text-sm font-medium">AI Score</div>
+            {aiPercent == null ? <div className="mt-3 text-sm text-white/50">No score saved yet.</div> : <AiBar aiPercent={aiPercent} />}
+
+            <div className="mt-6 text-xs text-white/60">
+              Created: {scan?.created_at ? new Date(scan.created_at).toLocaleString() : "—"}
+            </div>
+          </aside>
+        </div>
+      )}
+    </main>
   );
 }

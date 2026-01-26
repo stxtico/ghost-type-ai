@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import AppShell from "@/app/_components/AppShell";
 import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 
@@ -194,88 +193,82 @@ export default function ScanImageDetailClient({ id }: { id: string }) {
   }
 
   return (
-    <AppShell>
-      <main className="px-10 py-8">
-        <div className="mb-6 flex items-center justify-between">
-          <div>
-            <div className="text-2xl font-semibold tracking-tight">Saved Image Scan</div>
-            <div className="mt-1 text-sm text-white/60">
-              <Link className="underline hover:opacity-80" href="/scans/image">
-                Back to list
-              </Link>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={rename}
-              disabled={working || loading}
-              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10 disabled:opacity-40"
-            >
-              Rename
-            </button>
-            <button
-              onClick={rescanExisting}
-              disabled={working || loading}
-              className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:opacity-90 disabled:opacity-60"
-            >
-              Rescan
-            </button>
-            <button
-              onClick={deleteScan}
-              disabled={working || loading}
-              className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-2 text-sm text-red-100 hover:bg-red-500/15 disabled:opacity-40"
-            >
-              Delete
-            </button>
+    <main className="px-10 py-8">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <div className="text-2xl font-semibold tracking-tight">Saved Image Scan</div>
+          <div className="mt-1 text-sm text-white/60">
+            <Link className="underline hover:opacity-80" href="/scans/image">
+              Back to list
+            </Link>
           </div>
         </div>
 
-        {err && (
-          <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-            {err}
-          </div>
-        )}
-        {msg && (
-          <div className="mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
-            {msg}
-          </div>
-        )}
+        <div className="flex gap-2">
+          <button
+            onClick={rename}
+            disabled={working || loading}
+            className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10 disabled:opacity-40"
+          >
+            Rename
+          </button>
+          <button
+            onClick={rescanExisting}
+            disabled={working || loading}
+            className="rounded-xl bg-white px-4 py-2 text-sm font-medium text-black hover:opacity-90 disabled:opacity-60"
+          >
+            Rescan
+          </button>
+          <button
+            onClick={deleteScan}
+            disabled={working || loading}
+            className="rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-2 text-sm text-red-100 hover:bg-red-500/15 disabled:opacity-40"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
 
-        {loading ? (
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">Loading…</div>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-3">
-            <section className="lg:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-6">
-              <div className="mb-3 flex items-center justify-between">
-                <div className="text-sm font-medium">Image</div>
-              </div>
+      {err && (
+        <div className="mb-4 rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          {err}
+        </div>
+      )}
+      {msg && (
+        <div className="mb-4 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/80">
+          {msg}
+        </div>
+      )}
 
-              <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
-                {imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={imageUrl} alt="scan" className="max-h-130 w-full rounded-xl object-contain" />
-                ) : (
-                  <div className="text-sm text-white/50">No image preview. (image_url is null)</div>
-                )}
-              </div>
-            </section>
+      {loading ? (
+        <div className="rounded-2xl border border-white/10 bg-black/30 p-4 text-sm text-white/60">Loading…</div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-3">
+          <section className="lg:col-span-2 rounded-3xl border border-white/10 bg-white/5 p-6">
+            <div className="mb-3 flex items-center justify-between">
+              <div className="text-sm font-medium">Image</div>
+            </div>
 
-            <aside className="rounded-3xl border border-white/10 bg-white/5 p-6">
-              <div className="text-sm font-medium">AI Score</div>
-              {aiPercent == null ? (
-                <div className="mt-3 text-sm text-white/50">No score saved yet.</div>
+            <div className="rounded-2xl border border-white/10 bg-black/40 p-4">
+              {imageUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={imageUrl} alt="scan" className="max-h-130 w-full rounded-xl object-contain" />
               ) : (
-                <AiBar aiPercent={aiPercent} />
+                <div className="text-sm text-white/50">No image preview. (image_url is null)</div>
               )}
+            </div>
+          </section>
 
-              <div className="mt-6 text-xs text-white/60">
-                Created: {scan?.created_at ? new Date(scan.created_at).toLocaleString() : "—"}
-              </div>
-            </aside>
-          </div>
-        )}
-      </main>
-    </AppShell>
+          <aside className="rounded-3xl border border-white/10 bg-white/5 p-6">
+            <div className="text-sm font-medium">AI Score</div>
+            {aiPercent == null ? <div className="mt-3 text-sm text-white/50">No score saved yet.</div> : <AiBar aiPercent={aiPercent} />}
+
+            <div className="mt-6 text-xs text-white/60">
+              Created: {scan?.created_at ? new Date(scan.created_at).toLocaleString() : "—"}
+            </div>
+          </aside>
+        </div>
+      )}
+    </main>
   );
 }
