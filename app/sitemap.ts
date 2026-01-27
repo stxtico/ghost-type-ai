@@ -1,20 +1,32 @@
+// app/sitemap.ts
 import type { MetadataRoute } from "next";
 
-export default function sitemap(): MetadataRoute.Sitemap {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://ghosttyper.vercel.app";
+function getBaseUrl() {
+  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL;
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
 
-  // Only include pages you want indexed (public marketing/tool pages)
+  const vercel = process.env.VERCEL_URL;
+  if (vercel) return `https://${vercel}`;
+
+  return "http://localhost:3000";
+}
+
+export default function sitemap(): MetadataRoute.Sitemap {
+  const baseUrl = getBaseUrl();
+
+  // Only include PUBLIC pages you want indexed
   const routes = [
-    "/",
+    "/",              // Landing / marketing page (recommended)
     "/detect/text",
     "/detect/image",
+    // add any public SEO pages you create later like:
+    // "/ai-detector",
+    // "/ai-typer",
   ];
 
-  const now = new Date();
-
   return routes.map((path) => ({
-    url: `${siteUrl}${path}`,
-    lastModified: now,
+    url: `${baseUrl}${path}`,
+    lastModified: new Date(),
     changeFrequency: "weekly",
     priority: path === "/" ? 1 : 0.8,
   }));
