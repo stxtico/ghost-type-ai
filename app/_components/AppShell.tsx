@@ -5,15 +5,18 @@ import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { supabase } from "@/lib/supabaseClient";
 import TokenBar from "@/components/TokenBar";
+import { useTheme } from "./ThemeProvider";
+import { LANG_LABEL, Lang, t, useLang } from "./LanguageProvider";
 
 type Unit = "words" | "images";
-
-type BarState = {
-  label: string;
-  used: number;
-  limit: number;
-  unit: Unit;
-} | null;
+type BarState =
+  | {
+      label: string;
+      used: number;
+      limit: number;
+      unit: Unit;
+    }
+  | null;
 
 function clampInt(n: any, fallback = 0) {
   const x = Number(n);
@@ -29,14 +32,10 @@ function extractUsage(payload: any, tool: string): { used: number; limit: number
   }
 
   const u1 = payload?.usage?.[tool];
-  if (u1 && (u1.used != null || u1.limit != null)) {
-    return { used: clampInt(u1.used, 0), limit: clampInt(u1.limit, 0), unit: u1.unit };
-  }
+  if (u1 && (u1.used != null || u1.limit != null)) return { used: clampInt(u1.used, 0), limit: clampInt(u1.limit, 0), unit: u1.unit };
 
   const u2 = payload?.tools?.[tool];
-  if (u2 && (u2.used != null || u2.limit != null)) {
-    return { used: clampInt(u2.used, 0), limit: clampInt(u2.limit, 0), unit: u2.unit };
-  }
+  if (u2 && (u2.used != null || u2.limit != null)) return { used: clampInt(u2.used, 0), limit: clampInt(u2.limit, 0), unit: u2.unit };
 
   const rows = payload?.rows;
   if (Array.isArray(rows)) {
@@ -57,6 +56,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
+  const { theme, toggle } = useTheme();
+  const { lang, setLang } = useLang();
+
   const [sessionReady, setSessionReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
 
@@ -71,10 +73,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       (user?.user_metadata?.name as string) ||
       (user?.email ? String(user.email).split("@")[0] : "Guest");
 
-    const av =
-      (user?.user_metadata?.avatar_url as string) ||
-      (user?.user_metadata?.picture as string) ||
-      null;
+    const av = (user?.user_metadata?.avatar_url as string) || (user?.user_metadata?.picture as string) || null;
 
     setName(display);
     setAvatarUrl(av);
@@ -104,24 +103,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return () => unsub?.unsubscribe?.();
   }, []);
 
-  const headerTitle =
-    pathname === "/"
-      ? "Dashboard"
-      : pathname.includes("/detect/text")
-      ? "Text Scan"
-      : pathname.includes("/detect/image")
-      ? "Image Scan"
-      : pathname.includes("/scans/text")
-      ? "Saved Text Scans"
-      : pathname.includes("/scans/image")
-      ? "Saved Image Scans"
-      : pathname.includes("/billing")
-      ? "Billing"
-      : pathname.includes("/download")
-      ? "Download"
-      : pathname.includes("/account")
-      ? "Account"
-      : "Ghost Typer";
+  const headerTitle = useMemo(() => {
+    if (pathname === "/") return t(lang, "dashboard");
+    if (pathname.startsWith("/detect/text")) return t(lang, "textScan");
+    if (pathname.startsWith("/detect/image")) return t(lang, "imageScan");
+    if (pathname.startsWith("/scans/text")) return t(lang, "savedText");
+    if (pathname.startsWith("/scans/image")) return t(lang, "savedImage");
+    if (pathname.startsWith("/billing")) return t(lang, "billing");
+    if (pathname.startsWith("/download")) return t(lang, "download");
+    if (pathname.startsWith("/account")) return t(lang, "account");
+    return "Ghost Typer";
+  }, [pathname, lang]);
 
   function goAccountOrLogin() {
     if (!sessionReady) return;
@@ -131,13 +123,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const showName = sessionReady ? (name || "Guest") : "Checking…";
 
-  // ✅ THIS FIXES IT: includes() catches list + detail URLs reliably
   const barConfig = useMemo(() => {
-    const onText = pathname.includes("/detect/text") || pathname.includes("/scans/text");
-    const onImage = pathname.includes("/detect/image") || pathname.includes("/scans/image");
-
+    const onText = pathname.startsWith("/detect/text") || pathname.startsWith("/scans/text");
+    const onImage = pathname.startsWith("/detect/image") || pathname.startsWith("/scans/image");
     if (onText) return { tool: "detect_text", label: "Text Detector Tokens", unit: "words" as Unit };
-    if (onImage) return { tool: "detect_image", label: "Image Detector Credits", unit: "images" as Unit };
+    if (onImage) return { tool: "detect_image", label: "Image Detector Tokens", unit: "images" as Unit };
     return null;
   }, [pathname]);
 
@@ -182,9 +172,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               limit,
               unit: (parsed?.unit as Unit) || barConfig.unit,
             });
-          } else {
-            setBar(null);
-          }
+          } else setBar(null);
         }
       } catch {
         if (!cancelled) setBar(null);
@@ -198,7 +186,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [barConfig]);
 
   return (
-    <div className="flex h-screen w-full bg-black text-white">
+    <div className="flex h-screen w-full bg-black text-white dark:bg-black dark:text-white">
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -207,31 +195,54 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <div className="text-lg font-semibold tracking-tight">{headerTitle}</div>
           </div>
 
-          <button
-            onClick={goAccountOrLogin}
-            className="group flex items-center gap-3"
-            title={isAuthed ? "Account" : "Log in"}
-            type="button"
-          >
-            <div className="text-right leading-tight">
-              <div className="text-xs text-white/55">{isAuthed ? "Welcome" : "Guest"}</div>
-              <div className="text-sm font-medium text-white/90">{showName}</div>
+          <div className="flex items-center gap-3">
+            {/* Theme toggle */}
+            <button
+              type="button"
+              onClick={toggle}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10"
+              title="Toggle theme"
+            >
+              {theme === "dark" ? "Dark" : "Light"}
+            </button>
+
+            {/* Language select */}
+            <div className="relative">
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value as Lang)}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 outline-none hover:bg-white/10"
+              >
+                {Object.entries(LANG_LABEL).map(([code, label]) => (
+                  <option key={code} value={code} className="bg-black">
+                    {label}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="h-9 w-9 overflow-hidden rounded-full border border-white/15 bg-white/5 transition group-hover:border-white/30">
-              {sessionReady && avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={avatarUrl} alt="profile" className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center text-xs text-white/70">
-                  {sessionReady ? (showName?.slice(0, 1).toUpperCase() || "G") : "…"}
-                </div>
-              )}
-            </div>
-          </button>
+            {/* Account */}
+            <button onClick={goAccountOrLogin} className="group flex items-center gap-3" title={isAuthed ? "Account" : "Log in"} type="button">
+              <div className="text-right leading-tight">
+                <div className="text-xs text-white/55">{isAuthed ? "Welcome" : "Guest"}</div>
+                <div className="text-sm font-medium text-white/90">{showName}</div>
+              </div>
+
+              <div className="h-9 w-9 overflow-hidden rounded-full border border-white/15 bg-white/5 transition group-hover:border-white/30">
+                {sessionReady && avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarUrl} alt="profile" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs text-white/70">
+                    {sessionReady ? (showName?.slice(0, 1).toUpperCase() || "G") : "…"}
+                  </div>
+                )}
+              </div>
+            </button>
+          </div>
         </header>
 
-        {/* ✅ Token bar */}
+        {/* Token bar stays global for detect + scans routes */}
         {bar && (
           <div className="border-b border-white/10 bg-black/30 px-6 py-3">
             <TokenBar label={bar.label} used={bar.used} limit={bar.limit} unit={bar.unit} />

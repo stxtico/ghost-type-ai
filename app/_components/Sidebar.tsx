@@ -2,72 +2,148 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useLang, t } from "./LanguageProvider";
 
-function NavButton({
-  href,
-  label,
-  active,
-}: {
-  href: string;
-  label: string;
-  active: boolean;
-}) {
-  return (
-    <Link
-      href={href}
-      className={[
-        "flex items-center justify-between rounded-2xl border px-4 py-3 text-sm transition",
-        active
-          ? "border-white/25 bg-white/10 text-white"
-          : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10 hover:text-white",
-      ].join(" ")}
-    >
-      <span className="font-medium">{label}</span>
-      <span className="text-white/60">→</span>
-    </Link>
-  );
-}
+type Item = { href: string; labelKey: string };
 
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mb-2 mt-6 text-xs font-semibold tracking-wide text-white/50">
-      {children}
-    </div>
-  );
+function cx(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
 }
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { lang } = useLang();
 
-  const isActive = (href: string) => {
+  const [collapsed, setCollapsed] = useState(false);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("gt_sidebar_collapsed");
+    if (saved === "1") setCollapsed(true);
+  }, []);
+
+  function toggle() {
+    const next = !collapsed;
+    setCollapsed(next);
+    window.localStorage.setItem("gt_sidebar_collapsed", next ? "1" : "0");
+  }
+
+  const sections = useMemo(() => {
+    const dashboard: Item[] = [{ href: "/", labelKey: "dashboard" }];
+
+    const text: Item[] = [
+      { href: "/detect/text", labelKey: "newText" },
+      { href: "/scans/text", labelKey: "savedText" }, // ✅ back
+    ];
+
+    const image: Item[] = [
+      { href: "/detect/image", labelKey: "newImage" },
+      { href: "/scans/image", labelKey: "savedImage" }, // ✅ back
+    ];
+
+    const tools: Item[] = [{ href: "/download", labelKey: "download" }];
+
+    const billing: Item[] = [{ href: "/billing", labelKey: "billing" }];
+
+    return { dashboard, text, image, tools, billing };
+  }, []);
+
+  function isActive(href: string) {
     if (href === "/") return pathname === "/";
-    return pathname === href || pathname.startsWith(href + "/");
-  };
+    return pathname.startsWith(href);
+  }
+
+  const w = collapsed ? "w-[76px]" : "w-[260px]";
 
   return (
-    <aside className="w-70 shrink-0 border-r border-white/10 bg-black px-5 py-5">
-      <div className="mb-6">
-        <div className="text-lg font-semibold tracking-tight text-white">Ghost Typer</div>
-        <div className="mt-1 text-xs text-white/50">Detect AI in text & images</div>
+    <aside className={cx("h-screen shrink-0 border-r border-white/10 bg-black/60", w)}>
+      <div className="flex h-full flex-col">
+        {/* Brand */}
+        <div className="flex items-center justify-between gap-2 px-4 py-4">
+          <div className={cx("min-w-0", collapsed && "hidden")}>
+            <div className="text-sm font-semibold tracking-tight">Ghost Typer</div>
+            <div className="text-xs text-white/50">Detect AI in text & images</div>
+          </div>
+
+          <button
+            type="button"
+            onClick={toggle}
+            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10"
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? "›" : "‹"}
+          </button>
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 space-y-5 px-3 pb-6">
+          <Section title="Dashboard" items={sections.dashboard} collapsed={collapsed} lang={lang} active={isActive} />
+
+          <Section title="Text" items={sections.text} collapsed={collapsed} lang={lang} active={isActive} />
+
+          <Section title="Image" items={sections.image} collapsed={collapsed} lang={lang} active={isActive} />
+
+          <Section title={t(lang, "tools")} items={sections.tools} collapsed={collapsed} lang={lang} active={isActive} />
+
+          <Section title={t(lang, "billing")} items={sections.billing} collapsed={collapsed} lang={lang} active={isActive} />
+
+          {/* Bottom */}
+          <div className="pt-2">
+            <Link
+              href="/account"
+              className={cx(
+                "flex items-center justify-between rounded-xl border px-3 py-2 text-sm transition",
+                "border-white/10 bg-white/5 text-white/85 hover:bg-white/10",
+                collapsed && "justify-center"
+              )}
+            >
+              <span className={cx(collapsed && "hidden")}>{t(lang, "account")}</span>
+              <span className="text-xs text-white/50">⚙</span>
+            </Link>
+          </div>
+        </nav>
+
+        <div className="px-4 pb-4 text-xs text-white/35">{collapsed ? "©" : "© 2026 Ghost Typer"}</div>
       </div>
-
-      <NavButton href="/" label="Dashboard" active={isActive("/")} />
-
-      <SectionTitle>Text</SectionTitle>
-      <NavButton href="/detect/text" label="New Text Scan" active={isActive("/detect/text")} />
-      <NavButton href="/scans/text" label="Saved Text Scans" active={isActive("/scans/text")} />
-
-      <SectionTitle>Image</SectionTitle>
-      <NavButton href="/detect/image" label="New Image Scan" active={isActive("/detect/image")} />
-      <NavButton href="/scans/image" label="Saved Image Scans" active={isActive("/scans/image")} />
-
-      <SectionTitle>Tools</SectionTitle>
-      <NavButton href="/download" label="Download Typer" active={isActive("/download")} />
-
-      <SectionTitle>Billing</SectionTitle>
-      <NavButton href="/billing" label="Manage Subscription" active={isActive("/billing")} />
-
-      <div className="mt-8 text-xs text-white/35">© {new Date().getFullYear()} Ghost Typer</div>
     </aside>
+  );
+}
+
+function Section({
+  title,
+  items,
+  collapsed,
+  lang,
+  active,
+}: {
+  title: string;
+  items: { href: string; labelKey: string }[];
+  collapsed: boolean;
+  lang: any;
+  active: (href: string) => boolean;
+}) {
+  return (
+    <div>
+      <div className={cx("mb-2 px-2 text-xs text-white/45", collapsed && "hidden")}>{title}</div>
+      <div className="space-y-1">
+        {items.map((it) => (
+          <Link
+            key={it.href}
+            href={it.href}
+            className={cx(
+              "flex items-center justify-between rounded-xl px-3 py-2 text-sm transition",
+              active(it.href)
+                ? "bg-white/10 text-white"
+                : "text-white/70 hover:bg-white/5 hover:text-white/90",
+              collapsed && "justify-center px-2"
+            )}
+            title={collapsed ? t(lang, it.labelKey) : undefined}
+          >
+            <span className={cx("truncate", collapsed && "hidden")}>{t(lang, it.labelKey)}</span>
+            <span className="text-xs opacity-60">{active(it.href) ? "•" : ""}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
