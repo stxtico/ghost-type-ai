@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: "Ghost Typer – AI Text & Image Detector",
   description: "Detect AI-generated text and images instantly.",
   verification: {
-    google: "ABC123XYZ", // 👈 paste ONLY the content value
+    google: "lqxYAwc8bpxwejKrN1ZJlA7KYlwuz8Ihl66bqx9PH0M", 
   },
 };
 
