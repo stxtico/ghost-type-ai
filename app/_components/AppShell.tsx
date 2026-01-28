@@ -32,21 +32,37 @@ function extractUsage(payload: any, tool: string): { used: number; limit: number
   }
 
   const u1 = payload?.usage?.[tool];
-  if (u1 && (u1.used != null || u1.limit != null)) return { used: clampInt(u1.used, 0), limit: clampInt(u1.limit, 0), unit: u1.unit };
+  if (u1 && (u1.used != null || u1.limit != null)) {
+    return { used: clampInt(u1.used, 0), limit: clampInt(u1.limit, 0), unit: u1.unit };
+  }
 
   const u2 = payload?.tools?.[tool];
-  if (u2 && (u2.used != null || u2.limit != null)) return { used: clampInt(u2.used, 0), limit: clampInt(u2.limit, 0), unit: u2.unit };
+  if (u2 && (u2.used != null || u2.limit != null)) {
+    return { used: clampInt(u2.used, 0), limit: clampInt(u2.limit, 0), unit: u2.unit };
+  }
 
   const rows = payload?.rows;
   if (Array.isArray(rows)) {
     const row = rows.find((r) => String(r?.tool) === tool);
-    if (row) return { used: clampInt(row.words_used ?? row.used, 0), limit: clampInt(row.limit ?? row.monthly_limit, 0), unit: row.unit };
+    if (row) {
+      return {
+        used: clampInt(row.words_used ?? row.used, 0),
+        limit: clampInt(row.limit ?? row.monthly_limit, 0),
+        unit: row.unit,
+      };
+    }
   }
 
   const data = payload?.data;
   if (Array.isArray(data)) {
     const row = data.find((r) => String(r?.tool) === tool);
-    if (row) return { used: clampInt(row.words_used ?? row.used, 0), limit: clampInt(row.limit ?? row.monthly_limit, 0), unit: row.unit };
+    if (row) {
+      return {
+        used: clampInt(row.words_used ?? row.used, 0),
+        limit: clampInt(row.limit ?? row.monthly_limit, 0),
+        unit: row.unit,
+      };
+    }
   }
 
   return null;
@@ -67,18 +83,37 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const [bar, setBar] = useState<BarState>(null);
 
+  // language dropdown state
+  const [langOpen, setLangOpen] = useState(false);
+
   function applyUser(user: any | null) {
     const display =
       (user?.user_metadata?.full_name as string) ||
       (user?.user_metadata?.name as string) ||
       (user?.email ? String(user.email).split("@")[0] : "Guest");
 
-    const av = (user?.user_metadata?.avatar_url as string) || (user?.user_metadata?.picture as string) || null;
+    const av =
+      (user?.user_metadata?.avatar_url as string) ||
+      (user?.user_metadata?.picture as string) ||
+      null;
 
     setName(display);
     setAvatarUrl(av);
   }
 
+  // close language dropdown on outside click
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      const el = e.target as HTMLElement | null;
+      if (!el) return;
+      if (el.closest?.('[data-lang-menu="1"]')) return;
+      setLangOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  // auth state
   useEffect(() => {
     let unsub: any = null;
 
@@ -123,6 +158,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const showName = sessionReady ? (name || "Guest") : "Checking…";
 
+  // token bar config by route
   const barConfig = useMemo(() => {
     const onText = pathname.startsWith("/detect/text") || pathname.startsWith("/scans/text");
     const onImage = pathname.startsWith("/detect/image") || pathname.startsWith("/scans/image");
@@ -131,6 +167,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return null;
   }, [pathname]);
 
+  // load token bar
   useEffect(() => {
     let cancelled = false;
 
@@ -172,7 +209,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
               limit,
               unit: (parsed?.unit as Unit) || barConfig.unit,
             });
-          } else setBar(null);
+          } else {
+            setBar(null);
+          }
         }
       } catch {
         if (!cancelled) setBar(null);
@@ -186,11 +225,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [barConfig]);
 
   return (
-    <div className="flex h-screen w-full bg-black text-white dark:bg-black dark:text-white">
+    <div className="flex h-screen w-full bg-white text-black dark:bg-black dark:text-white">
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-white/10 bg-black/40 px-6 py-4">
+        <header className="flex items-center justify-between border-b border-black/10 bg-white/70 px-6 py-4 backdrop-blur dark:border-white/10 dark:bg-black/40">
           <div className="flex items-baseline gap-3">
             <div className="text-lg font-semibold tracking-tight">{headerTitle}</div>
           </div>
@@ -200,40 +239,66 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={toggle}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10"
+              className="rounded-xl border border-black/10 bg-black/5 px-3 py-2 text-xs text-black/80 hover:bg-black/10 dark:border-white/10 dark:bg-white/5 dark:text-white/80 dark:hover:bg-white/10"
               title="Toggle theme"
             >
+              <span className="mr-2">{theme === "dark" ? "🌙" : "☀️"}</span>
               {theme === "dark" ? "Dark" : "Light"}
             </button>
 
-            {/* Language select */}
-            <div className="relative">
-              <select
-                value={lang}
-                onChange={(e) => setLang(e.target.value as Lang)}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 outline-none hover:bg-white/10"
+            {/* Language dropdown (styled) */}
+            <div className="relative" data-lang-menu="1">
+              <button
+                type="button"
+                onClick={() => setLangOpen((v) => !v)}
+                className="flex items-center gap-2 rounded-xl border border-black/10 bg-black/5 px-3 py-2 text-xs text-black/85 hover:bg-black/10 dark:border-white/10 dark:bg-white/5 dark:text-white/85 dark:hover:bg-white/10"
+                title="Language"
               >
-                {Object.entries(LANG_LABEL).map(([code, label]) => (
-                  <option key={code} value={code} className="bg-black">
-                    {label}
-                  </option>
-                ))}
-              </select>
+                <span className="opacity-80">🌐</span>
+                <span className="font-medium">{LANG_LABEL[lang]}</span>
+                <span className="opacity-60">▾</span>
+              </button>
+
+              {langOpen && (
+                <div className="absolute right-0 mt-2 w-52 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-black">
+                  {Object.entries(LANG_LABEL).map(([code, label]) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => {
+                        setLang(code as Lang);
+                        setLangOpen(false);
+                      }}
+                      className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition
+                        ${code === lang ? "bg-black/5 dark:bg-white/10" : "hover:bg-black/5 dark:hover:bg-white/5"}
+                      `}
+                    >
+                      <span className="text-black/85 dark:text-white/85">{label}</span>
+                      {code === lang && <span className="text-black/50 dark:text-white/50">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Account */}
-            <button onClick={goAccountOrLogin} className="group flex items-center gap-3" title={isAuthed ? "Account" : "Log in"} type="button">
+            <button
+              onClick={goAccountOrLogin}
+              className="group flex items-center gap-3"
+              title={isAuthed ? "Account" : "Log in"}
+              type="button"
+            >
               <div className="text-right leading-tight">
-                <div className="text-xs text-white/55">{isAuthed ? "Welcome" : "Guest"}</div>
-                <div className="text-sm font-medium text-white/90">{showName}</div>
+                <div className="text-xs text-black/55 dark:text-white/55">{isAuthed ? "Welcome" : "Guest"}</div>
+                <div className="text-sm font-medium text-black/90 dark:text-white/90">{showName}</div>
               </div>
 
-              <div className="h-9 w-9 overflow-hidden rounded-full border border-white/15 bg-white/5 transition group-hover:border-white/30">
+              <div className="h-9 w-9 overflow-hidden rounded-full border border-black/15 bg-black/5 transition group-hover:border-black/30 dark:border-white/15 dark:bg-white/5 dark:group-hover:border-white/30">
                 {sessionReady && avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={avatarUrl} alt="profile" className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-xs text-white/70">
+                  <div className="flex h-full w-full items-center justify-center text-xs text-black/70 dark:text-white/70">
                     {sessionReady ? (showName?.slice(0, 1).toUpperCase() || "G") : "…"}
                   </div>
                 )}
@@ -242,9 +307,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        {/* Token bar stays global for detect + scans routes */}
+        {/* Token bar */}
         {bar && (
-          <div className="border-b border-white/10 bg-black/30 px-6 py-3">
+          <div className="border-b border-black/10 bg-white/60 px-6 py-3 dark:border-white/10 dark:bg-black/30">
             <TokenBar label={bar.label} used={bar.used} limit={bar.limit} unit={bar.unit} />
           </div>
         )}

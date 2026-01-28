@@ -12,49 +12,51 @@ type ThemeCtx = {
 
 const Ctx = createContext<ThemeCtx | null>(null);
 
-function applyThemeToDom(t: Theme) {
-  // Tailwind dark mode expects "dark" class on <html>
-  const root = document.documentElement;
-  if (t === "dark") root.classList.add("dark");
-  else root.classList.remove("dark");
-  root.style.colorScheme = t; // helps inputs, scrollbars in some browsers
+const STORAGE_KEY = "gt_theme";
+
+function applyThemeClass(theme: Theme) {
+  const root = document.documentElement; // <html>
+  root.classList.remove("dark", "light");
+  root.classList.add(theme);
+  if (theme === "dark") root.classList.add("dark");
+  // Tailwind uses "dark" class, but we also keep "light" for debugging.
 }
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
 
+  // Initial load (runs once)
   useEffect(() => {
-    // Load saved theme, else default to dark
-    const saved = (window.localStorage.getItem("gt_theme") || "") as Theme;
-    const initial: Theme = saved === "light" || saved === "dark" ? saved : "dark";
+    const saved = (window.localStorage.getItem(STORAGE_KEY) as Theme | null) || null;
+
+    // If no saved preference, use system preference
+    const systemPrefersDark =
+      window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+    const initial: Theme = saved ?? (systemPrefersDark ? "dark" : "light");
     setThemeState(initial);
-    applyThemeToDom(initial);
+    applyThemeClass(initial);
   }, []);
 
-  function setTheme(t: Theme) {
-    setThemeState(t);
-    window.localStorage.setItem("gt_theme", t);
-    applyThemeToDom(t);
-  }
+  // Keep html class + localStorage synced
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEY, theme);
+    applyThemeClass(theme);
+  }, [theme]);
 
-  function toggle() {
-    setTheme(theme === "dark" ? "light" : "dark");
-  }
-
-  const value = useMemo(() => ({ theme, setTheme, toggle }), [theme]);
+  const value = useMemo<ThemeCtx>(() => {
+    return {
+      theme,
+      setTheme: (t) => setThemeState(t),
+      toggle: () => setThemeState((prev) => (prev === "dark" ? "light" : "dark")),
+    };
+  }, [theme]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useTheme() {
-  const ctx = useContext(Ctx);
-  if (!ctx) {
-    // Safe fallback (won't crash)
-    return {
-      theme: "dark" as Theme,
-      setTheme: () => {},
-      toggle: () => {},
-    };
-  }
-  return ctx;
+  const v = useContext(Ctx);
+  if (!v) throw new Error("useTheme must be used inside ThemeProvider");
+  return v;
 }

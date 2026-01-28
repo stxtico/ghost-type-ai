@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import Providers from "./_components/Providers";
+import ThemeProvider from "./_components/ThemeProvider";
 
 export const metadata: Metadata = {
-  title: "Ghost Typer",
-  description: "AI text and image detection tools.",
+  title: "Ghost Typer - AI Text & Image Detector + Typer",
+  description:
+    "Ghost Typer is a versatile AI toolset: detect AI in text and images, and use Ghost Typer to type anywhere with customizable speed, pauses, and realistic mistakes.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body>
-        <Providers>{children}</Providers>
+      <body className="min-h-screen bg-white text-black dark:bg-black dark:text-white">
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );
