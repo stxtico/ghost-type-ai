@@ -72,7 +72,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  const { theme, toggle, setTheme } = useTheme();
+  const { theme, toggle } = useTheme();
   const { lang, setLang } = useLang();
 
   const [sessionReady, setSessionReady] = useState(false);
@@ -83,7 +83,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const [bar, setBar] = useState<BarState>(null);
 
-  // language dropdown
+  // language dropdown state
   const [langOpen, setLangOpen] = useState(false);
 
   function applyUser(user: any | null) {
@@ -92,23 +92,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
       (user?.user_metadata?.name as string) ||
       (user?.email ? String(user.email).split("@")[0] : "Guest");
 
-    const av =
-      (user?.user_metadata?.avatar_url as string) ||
-      (user?.user_metadata?.picture as string) ||
-      null;
+    const av = (user?.user_metadata?.avatar_url as string) || (user?.user_metadata?.picture as string) || null;
 
     setName(display);
     setAvatarUrl(av);
   }
-
-  // ✅ If HTML class is already set (ThemeProvider did it), make sure context state matches.
-  // This fixes the “html changes but app doesn't” symptom when state got out of sync.
-  useEffect(() => {
-    const htmlIsDark = document.documentElement.classList.contains("dark");
-    const htmlTheme = htmlIsDark ? "dark" : "light";
-    if (htmlTheme !== theme) setTheme(htmlTheme);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // close language dropdown on outside click
   useEffect(() => {
@@ -167,6 +155,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const showName = sessionReady ? (name || "Guest") : "Checking…";
 
+  // token bar config by route
   const barConfig = useMemo(() => {
     const onText = pathname.startsWith("/detect/text") || pathname.startsWith("/scans/text");
     const onImage = pathname.startsWith("/detect/image") || pathname.startsWith("/scans/image");
@@ -175,6 +164,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return null;
   }, [pathname]);
 
+  // load token bar
   useEffect(() => {
     let cancelled = false;
 
@@ -186,6 +176,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token ?? null;
+
       if (!token) {
         setBar(null);
         return;
@@ -235,9 +226,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-black/10 bg-white/70 px-6 py-4 backdrop-blur dark:border-white/10 dark:bg-black/40">
-          <div className="flex items-baseline gap-3 min-w-0">
-            <div className="truncate text-lg font-semibold tracking-tight">{headerTitle}</div>
+        {/* ✅ isolation makes z-index behave predictably */}
+        <header className="isolate relative z-30 flex items-center justify-between border-b border-black/10 bg-white/70 px-6 py-4 backdrop-blur dark:border-white/10 dark:bg-black/40">
+          <div className="flex items-baseline gap-3">
+            <div className="text-lg font-semibold tracking-tight">{headerTitle}</div>
           </div>
 
           <div className="flex items-center gap-3">
@@ -252,8 +244,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
               {theme === "dark" ? "Dark" : "Light"}
             </button>
 
-            {/* Language dropdown */}
-            <div className="relative" data-lang-menu="1">
+            {/* ✅ Language dropdown always on top */}
+            <div className="relative z-999 isolate" data-lang-menu="1">
               <button
                 type="button"
                 onClick={() => setLangOpen((v) => !v)}
@@ -266,7 +258,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </button>
 
               {langOpen && (
-                <div className="absolute right-0 mt-2 w-52 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-black">
+                <div className="absolute right-0 mt-2 z-999 w-52 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-black">
                   {Object.entries(LANG_LABEL).map(([code, label]) => (
                     <button
                       key={code}
@@ -294,7 +286,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               title={isAuthed ? "Account" : "Log in"}
               type="button"
             >
-              <div className="text-right leading-tight hidden sm:block">
+              <div className="text-right leading-tight">
                 <div className="text-xs text-black/55 dark:text-white/55">{isAuthed ? "Welcome" : "Guest"}</div>
                 <div className="text-sm font-medium text-black/90 dark:text-white/90">{showName}</div>
               </div>
@@ -313,7 +305,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        {/* Token bar */}
         {bar && (
           <div className="border-b border-black/10 bg-white/60 px-6 py-3 dark:border-white/10 dark:bg-black/30">
             <TokenBar label={bar.label} used={bar.used} limit={bar.limit} unit={bar.unit} />

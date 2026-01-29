@@ -10,56 +10,83 @@ type ThemeCtx = {
   toggle: () => void;
 };
 
-const Ctx = createContext<ThemeCtx | null>(null);
+const ThemeContext = createContext<ThemeCtx | null>(null);
 
-function applyThemeClass(theme: Theme) {
-  const root = document.documentElement; // <html>
+function applyThemeToDom(theme: Theme) {
+  const root = document.documentElement;
+
   if (theme === "dark") root.classList.add("dark");
   else root.classList.remove("dark");
+
+  root.style.colorScheme = theme;
 }
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
 
-  // Load initial theme once
+  // initial load
   useEffect(() => {
-    const saved = (localStorage.getItem("gt_theme") as Theme | null) ?? null;
-    const initial: Theme = saved === "light" || saved === "dark" ? saved : "dark";
+    const stored = window.localStorage.getItem("gt_theme");
+    if (stored === "dark" || stored === "light") {
+      setThemeState(stored);
+      applyThemeToDom(stored);
+      return;
+    }
+
+    const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? true;
+    const initial: Theme = prefersDark ? "dark" : "light";
     setThemeState(initial);
-    applyThemeClass(initial);
+    applyThemeToDom(initial);
   }, []);
 
-  // Keep <html> in sync + persist
+  // keep DOM synced with state
   useEffect(() => {
-    localStorage.setItem("gt_theme", theme);
-    applyThemeClass(theme);
+    applyThemeToDom(theme);
   }, [theme]);
 
-  // Optional: sync across tabs
+  // follow system theme ONLY if user never picked a theme
   useEffect(() => {
-    function onStorage(e: StorageEvent) {
-      if (e.key === "gt_theme" && (e.newValue === "dark" || e.newValue === "light")) {
-        setThemeState(e.newValue);
-      }
-    }
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+    const stored = window.localStorage.getItem("gt_theme");
+    if (stored === "dark" || stored === "light") return;
+
+    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
+    if (!mq) return;
+
+    const onChange = () => {
+      const next: Theme = mq.matches ? "dark" : "light";
+      setThemeState(next);
+    };
+
+    // Safari compat
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", onChange);
+      else mq.removeListener(onChange);
+    };
   }, []);
 
-  const value = useMemo<ThemeCtx>(
-    () => ({
-      theme,
-      setTheme: setThemeState,
-      toggle: () => setThemeState((t) => (t === "dark" ? "light" : "dark")),
-    }),
-    [theme]
-  );
+  const setTheme = (t: Theme) => {
+    window.localStorage.setItem("gt_theme", t);
+    setThemeState(t);
+  };
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  const toggle = () => {
+    setThemeState((prev) => {
+      const next: Theme = prev === "dark" ? "light" : "dark";
+      window.localStorage.setItem("gt_theme", next);
+      return next;
+    });
+  };
+
+  const value = useMemo(() => ({ theme, setTheme, toggle }), [theme]);
+
+  return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
 export function useTheme() {
-  const v = useContext(Ctx);
-  if (!v) throw new Error("useTheme must be used inside ThemeProvider");
-  return v;
+  const ctx = useContext(ThemeContext);
+  if (!ctx) throw new Error("useTheme must be used inside <ThemeProvider>");
+  return ctx;
 }

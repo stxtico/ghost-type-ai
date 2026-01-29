@@ -1,9 +1,29 @@
 ﻿@import "tailwindcss";
 
-/* Base document setup */
-html, body { height: 100%; }
-
+html,
 body {
-  background-color: #000;
-  color: #fff;
+  height: 100%;
+}
+
+@layer base {
+  :root {
+    /* Theme vars driven by wallpaper */
+    --gt-bg: #050508;
+
+    /* App surfaces */
+    --gt-card: rgba(255, 255, 255, 0.06);
+    --gt-border: rgba(255, 255, 255, 0.10);
+    --gt-text: rgba(255, 255, 255, 0.92);
+    --gt-muted: rgba(255, 255, 255, 0.60);
+
+    /* Accents (RGB triplets) */
+    --gt-accent: 168 85 247; /* purple */
+    --gt-accent-2: 59 130 246; /* blue */
+    --gt-accent-3: 239 68 68; /* red */
+  }
+
+  body {
+    background: var(--gt-bg);
+    color: var(--gt-text);
+  }
 }

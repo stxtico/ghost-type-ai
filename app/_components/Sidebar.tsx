@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useLang, t } from "@/app/_components/LanguageProvider";
+import { useLang, t } from "./LanguageProvider";
 
 type Item = { href: string; labelKey: string };
 
@@ -31,7 +31,6 @@ export default function Sidebar() {
   const sections = useMemo(() => {
     const dashboard: Item[] = [{ href: "/", labelKey: "dashboard" }];
 
-    // ✅ includes both saved scans buttons
     const text: Item[] = [
       { href: "/detect/text", labelKey: "newText" },
       { href: "/scans/text", labelKey: "savedText" },
@@ -43,9 +42,13 @@ export default function Sidebar() {
     ];
 
     const tools: Item[] = [{ href: "/download", labelKey: "download" }];
+
+    // ✅ NEW: Themes page
+    const themes: Item[] = [{ href: "/themes", labelKey: "themes" }];
+
     const billing: Item[] = [{ href: "/billing", labelKey: "billing" }];
 
-    return { dashboard, text, image, tools, billing };
+    return { dashboard, text, image, tools, themes, billing };
   }, []);
 
   function isActive(href: string) {
@@ -59,8 +62,8 @@ export default function Sidebar() {
     <aside
       className={cx(
         "h-screen shrink-0 border-r backdrop-blur",
-        // ✅ theme-safe
-        "border-black/10 bg-white/70 text-black dark:border-white/10 dark:bg-black/60 dark:text-white",
+        "border-black/10 bg-white/70 text-black",
+        "dark:border-white/10 dark:bg-black/60 dark:text-white",
         w
       )}
     >
@@ -69,9 +72,7 @@ export default function Sidebar() {
         <div className="flex items-center justify-between gap-2 px-4 py-4">
           <div className={cx("min-w-0", collapsed && "hidden")}>
             <div className="text-sm font-semibold tracking-tight">Ghost Typer</div>
-            <div className="text-xs text-black/50 dark:text-white/50">
-              Detect AI in text & images
-            </div>
+            <div className="text-xs text-black/50 dark:text-white/50">Detect AI in text & images</div>
           </div>
 
           <button
@@ -90,10 +91,14 @@ export default function Sidebar() {
 
         {/* Nav */}
         <nav className="flex-1 space-y-5 px-3 pb-6">
-          <Section title={t(lang, "dashboard")} items={sections.dashboard} collapsed={collapsed} lang={lang} active={isActive} />
+          <Section title={t(lang, "dashboard") ?? "Dashboard"} items={sections.dashboard} collapsed={collapsed} lang={lang} active={isActive} />
           <Section title="Text" items={sections.text} collapsed={collapsed} lang={lang} active={isActive} />
           <Section title="Image" items={sections.image} collapsed={collapsed} lang={lang} active={isActive} />
           <Section title={t(lang, "tools")} items={sections.tools} collapsed={collapsed} lang={lang} active={isActive} />
+
+          {/* ✅ NEW: Themes section */}
+          <Section title="Themes" items={sections.themes} collapsed={collapsed} lang={lang} active={isActive} />
+
           <Section title={t(lang, "billing")} items={sections.billing} collapsed={collapsed} lang={lang} active={isActive} />
 
           {/* Bottom */}
@@ -113,9 +118,7 @@ export default function Sidebar() {
           </div>
         </nav>
 
-        <div className="px-4 pb-4 text-xs text-black/35 dark:text-white/35">
-          {collapsed ? "©" : "© 2026 Ghost Typer"}
-        </div>
+        <div className="px-4 pb-4 text-xs text-black/35 dark:text-white/35">{collapsed ? "©" : "© 2026 Ghost Typer"}</div>
       </div>
     </aside>
   );
@@ -134,30 +137,36 @@ function Section({
   lang: any;
   active: (href: string) => boolean;
 }) {
+  function labelFor(key: string) {
+    // If LanguageProvider doesn't have "themes" yet, this will just show "themes".
+    // That’s fine (won’t break).
+    return t(lang, key) ?? key;
+  }
+
   return (
     <div>
-      <div className={cx("mb-2 px-2 text-xs", "text-black/45 dark:text-white/45", collapsed && "hidden")}>
-        {title}
-      </div>
-
+      <div className={cx("mb-2 px-2 text-xs text-black/45 dark:text-white/45", collapsed && "hidden")}>{title}</div>
       <div className="space-y-1">
-        {items.map((it) => (
-          <Link
-            key={it.href}
-            href={it.href}
-            className={cx(
-              "flex items-center justify-between rounded-xl px-3 py-2 text-sm transition",
-              active(it.href)
-                ? "bg-black/10 text-black dark:bg-white/10 dark:text-white"
-                : "text-black/70 hover:bg-black/5 hover:text-black/90 dark:text-white/70 dark:hover:bg-white/5 dark:hover:text-white/90",
-              collapsed && "justify-center px-2"
-            )}
-            title={collapsed ? t(lang, it.labelKey) : undefined}
-          >
-            <span className={cx("truncate", collapsed && "hidden")}>{t(lang, it.labelKey)}</span>
-            <span className="text-xs opacity-60">{active(it.href) ? "•" : ""}</span>
-          </Link>
-        ))}
+        {items.map((it) => {
+          const on = active(it.href);
+          return (
+            <Link
+              key={it.href}
+              href={it.href}
+              className={cx(
+                "flex items-center justify-between rounded-xl px-3 py-2 text-sm transition",
+                on
+                  ? "bg-black/10 text-black dark:bg-white/10 dark:text-white"
+                  : "text-black/70 hover:bg-black/5 hover:text-black/90 dark:text-white/70 dark:hover:bg-white/5 dark:hover:text-white/90",
+                collapsed && "justify-center px-2"
+              )}
+              title={collapsed ? labelFor(it.labelKey) : undefined}
+            >
+              <span className={cx("truncate", collapsed && "hidden")}>{labelFor(it.labelKey)}</span>
+              <span className="text-xs opacity-60">{on ? "•" : ""}</span>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
