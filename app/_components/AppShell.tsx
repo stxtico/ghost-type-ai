@@ -5,8 +5,8 @@ import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { supabase } from "@/lib/supabaseClient";
 import TokenBar from "@/components/TokenBar";
-import { useTheme } from "./ThemeProvider";
-import { LANG_LABEL, Lang, t, useLang } from "./LanguageProvider";
+import { useTheme } from "@/app/_components/ThemeProvider";
+import { LANG_LABEL, type Lang, t, useLang } from "@/app/_components/LanguageProvider";
 
 type Unit = "words" | "images";
 type BarState =

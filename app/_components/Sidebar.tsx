@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useLang, t } from "./LanguageProvider";
+import { useLang, t } from "@/app/_components/LanguageProvider";
 
 type Item = { href: string; labelKey: string };
 

@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-type Theme = "dark" | "light";
+export type Theme = "dark" | "light";
 
 type ThemeCtx = {
   theme: Theme;
@@ -12,45 +12,31 @@ type ThemeCtx = {
 
 const Ctx = createContext<ThemeCtx | null>(null);
 
-const STORAGE_KEY = "gt_theme";
-
-function applyThemeClass(theme: Theme) {
-  const root = document.documentElement; // <html>
-  root.classList.remove("dark", "light");
-  root.classList.add(theme);
-  if (theme === "dark") root.classList.add("dark");
-  // Tailwind uses "dark" class, but we also keep "light" for debugging.
+function applyThemeToHtml(theme: Theme) {
+  const root = document.documentElement;
+  root.classList.toggle("dark", theme === "dark");
 }
 
 export default function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
 
-  // Initial load (runs once)
+  // load once
   useEffect(() => {
-    const saved = (window.localStorage.getItem(STORAGE_KEY) as Theme | null) || null;
-
-    // If no saved preference, use system preference
-    const systemPrefersDark =
-      window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-
-    const initial: Theme = saved ?? (systemPrefersDark ? "dark" : "light");
+    const saved = window.localStorage.getItem("gt_theme") as Theme | null;
+    const initial: Theme = saved === "light" || saved === "dark" ? saved : "dark";
     setThemeState(initial);
-    applyThemeClass(initial);
   }, []);
 
-  // Keep html class + localStorage synced
+  // ✅ apply ALWAYS when theme changes
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, theme);
-    applyThemeClass(theme);
+    applyThemeToHtml(theme);
+    window.localStorage.setItem("gt_theme", theme);
   }, [theme]);
 
-  const value = useMemo<ThemeCtx>(() => {
-    return {
-      theme,
-      setTheme: (t) => setThemeState(t),
-      toggle: () => setThemeState((prev) => (prev === "dark" ? "light" : "dark")),
-    };
-  }, [theme]);
+  const setTheme = (t: Theme) => setThemeState(t);
+  const toggle = () => setThemeState((p) => (p === "dark" ? "light" : "dark"));
+
+  const value = useMemo(() => ({ theme, setTheme, toggle }), [theme]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
