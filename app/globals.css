@@ -1,29 +1,24 @@
 ﻿@import "tailwindcss";
 
-html,
-body {
-  height: 100%;
+html, body { height: 100%; }
+
+:root {
+  /* theme background + palette (ThemeProvider overwrites these) */
+  --gt-bg: linear-gradient(180deg, rgba(0,0,0,0.92), rgba(0,0,0,0.92));
+  --gt-accent-1: #7c3aed;
+  --gt-accent-2: #ef4444;
+  --gt-accent-3: #38bdf8;
+
+  /* glitch colors follow palette by default */
+  --gt-glitch-1: var(--gt-accent-1);
+  --gt-glitch-2: var(--gt-accent-2);
+  --gt-glitch-3: var(--gt-accent-3);
 }
 
-@layer base {
-  :root {
-    /* Theme vars driven by wallpaper */
-    --gt-bg: #050508;
-
-    /* App surfaces */
-    --gt-card: rgba(255, 255, 255, 0.06);
-    --gt-border: rgba(255, 255, 255, 0.10);
-    --gt-text: rgba(255, 255, 255, 0.92);
-    --gt-muted: rgba(255, 255, 255, 0.60);
-
-    /* Accents (RGB triplets) */
-    --gt-accent: 168 85 247; /* purple */
-    --gt-accent-2: 59 130 246; /* blue */
-    --gt-accent-3: 239 68 68; /* red */
-  }
-
-  body {
-    background: var(--gt-bg);
-    color: var(--gt-text);
-  }
+body {
+  color: #fff;
+  background-image: var(--gt-bg);
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
 }

@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import { supabase } from "@/lib/supabaseClient";
 import TokenBar from "@/components/TokenBar";
-import { useTheme } from "@/app/_components/ThemeProvider";
 import { LANG_LABEL, type Lang, t, useLang } from "@/app/_components/LanguageProvider";
 
 type Unit = "words" | "images";
@@ -72,7 +71,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
 
-  const { theme, toggle } = useTheme();
   const { lang, setLang } = useLang();
 
   const [sessionReady, setSessionReady] = useState(false);
@@ -143,6 +141,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     if (pathname.startsWith("/scans/image")) return t(lang, "savedImage");
     if (pathname.startsWith("/billing")) return t(lang, "billing");
     if (pathname.startsWith("/download")) return t(lang, "download");
+    if (pathname.startsWith("/themes")) return t(lang, "themes");
     if (pathname.startsWith("/account")) return t(lang, "account");
     return "Ghost Typer";
   }, [pathname, lang]);
@@ -222,34 +221,23 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, [barConfig]);
 
   return (
-    <div className="flex h-screen w-full bg-white text-black dark:bg-black dark:text-white">
+    <div className="flex h-screen w-full bg-transparent text-white">
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* ✅ isolation makes z-index behave predictably */}
-        <header className="isolate relative z-30 flex items-center justify-between border-b border-black/10 bg-white/70 px-6 py-4 backdrop-blur dark:border-white/10 dark:bg-black/40">
+        {/* isolate + z-30 => dropdown won’t go behind anything */}
+        <header className="isolate relative z-30 flex items-center justify-between border-b border-white/10 bg-black/40 px-6 py-4 backdrop-blur">
           <div className="flex items-baseline gap-3">
             <div className="text-lg font-semibold tracking-tight">{headerTitle}</div>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Theme toggle */}
-            <button
-              type="button"
-              onClick={toggle}
-              className="rounded-xl border border-black/10 bg-black/5 px-3 py-2 text-xs text-black/80 hover:bg-black/10 dark:border-white/10 dark:bg-white/5 dark:text-white/80 dark:hover:bg-white/10"
-              title="Toggle theme"
-            >
-              <span className="mr-2">{theme === "dark" ? "🌙" : "☀️"}</span>
-              {theme === "dark" ? "Dark" : "Light"}
-            </button>
-
-            {/* ✅ Language dropdown always on top */}
-            <div className="relative z-999 isolate" data-lang-menu="1">
+            {/* Language dropdown */}
+            <div className="relative z-9999" data-lang-menu="1">
               <button
                 type="button"
                 onClick={() => setLangOpen((v) => !v)}
-                className="flex items-center gap-2 rounded-xl border border-black/10 bg-black/5 px-3 py-2 text-xs text-black/85 hover:bg-black/10 dark:border-white/10 dark:bg-white/5 dark:text-white/85 dark:hover:bg-white/10"
+                className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10"
                 title="Language"
               >
                 <span className="opacity-80">🌐</span>
@@ -258,7 +246,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </button>
 
               {langOpen && (
-                <div className="absolute right-0 mt-2 z-999 w-52 overflow-hidden rounded-2xl border border-black/10 bg-white shadow-lg dark:border-white/10 dark:bg-black">
+                <div className="absolute right-0 mt-2 z-9999 w-52 overflow-hidden rounded-2xl border border-white/10 bg-black shadow-lg">
                   {Object.entries(LANG_LABEL).map(([code, label]) => (
                     <button
                       key={code}
@@ -268,11 +256,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
                         setLangOpen(false);
                       }}
                       className={`flex w-full items-center justify-between px-3 py-2 text-left text-xs transition
-                        ${code === lang ? "bg-black/5 dark:bg-white/10" : "hover:bg-black/5 dark:hover:bg-white/5"}
+                        ${code === lang ? "bg-white/10" : "hover:bg-white/5"}
                       `}
                     >
-                      <span className="text-black/85 dark:text-white/85">{label}</span>
-                      {code === lang && <span className="text-black/50 dark:text-white/50">✓</span>}
+                      <span className="text-white/85">{label}</span>
+                      {code === lang && <span className="text-white/50">✓</span>}
                     </button>
                   ))}
                 </div>
@@ -287,16 +275,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
               type="button"
             >
               <div className="text-right leading-tight">
-                <div className="text-xs text-black/55 dark:text-white/55">{isAuthed ? "Welcome" : "Guest"}</div>
-                <div className="text-sm font-medium text-black/90 dark:text-white/90">{showName}</div>
+                <div className="text-xs text-white/55">{isAuthed ? "Welcome" : "Guest"}</div>
+                <div className="text-sm font-medium text-white/90">{showName}</div>
               </div>
 
-              <div className="h-9 w-9 overflow-hidden rounded-full border border-black/15 bg-black/5 transition group-hover:border-black/30 dark:border-white/15 dark:bg-white/5 dark:group-hover:border-white/30">
+              <div className="h-9 w-9 overflow-hidden rounded-full border border-white/15 bg-white/5 transition group-hover:border-white/30">
                 {sessionReady && avatarUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={avatarUrl} alt="profile" className="h-full w-full object-cover" />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center text-xs text-black/70 dark:text-white/70">
+                  <div className="flex h-full w-full items-center justify-center text-xs text-white/70">
                     {sessionReady ? (showName?.slice(0, 1).toUpperCase() || "G") : "…"}
                   </div>
                 )}
@@ -306,7 +294,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </header>
 
         {bar && (
-          <div className="border-b border-black/10 bg-white/60 px-6 py-3 dark:border-white/10 dark:bg-black/30">
+          <div className="border-b border-white/10 bg-black/30 px-6 py-3">
             <TokenBar label={bar.label} used={bar.used} limit={bar.limit} unit={bar.unit} />
           </div>
         )}
