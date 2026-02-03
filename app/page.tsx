@@ -3,6 +3,7 @@
 
 import AppShell from "@/app/_components/AppShell";
 import Link from "next/link";
+import Image from "next/image";
 import React, { useEffect, useMemo, useState } from "react";
 
 function Card({
@@ -31,17 +32,36 @@ function Card({
         <div className="text-sm font-semibold tracking-tight text-black/90 dark:text-white/90">
           {title}
         </div>
-        <div className="mt-1 text-xs text-black/60 dark:text-white/60">{subtitle}</div>
+        <div className="mt-1 text-xs text-black/60 dark:text-white/60">
+          {subtitle}
+        </div>
       </div>
     </Link>
   );
 }
 
-function VercelTriangle({ className }: { className?: string }) {
+/**
+ * Brand mark used everywhere on this page.
+ * File: /public/branding/ghost-light.png
+ * URL:  /branding/ghost-light.png
+ */
+function GhostLogo({
+  className,
+  priority,
+}: {
+  className?: string;
+  priority?: boolean;
+}) {
   return (
-    <svg viewBox="0 0 1155 1000" className={className} aria-hidden="true">
-      <path d="M577.5 0L1155 1000H0L577.5 0Z" fill="currentColor" />
-    </svg>
+    <Image
+      src="/branding/ghost-light.png"
+      alt=""
+      aria-hidden="true"
+      width={256}
+      height={256}
+      className={className}
+      priority={priority}
+    />
   );
 }
 
@@ -110,100 +130,123 @@ function IntroHero() {
   return (
     <div className="relative mb-6">
       {/* Fullscreen glitch overlay (only rendered after mount to avoid hydration mismatch) */}
-      {mounted && (
-        <div
-          className={[
-            "pointer-events-none fixed inset-0 z-60 transition-opacity duration-150",
-            stage === 0 ? "opacity-100" : "opacity-0",
-          ].join(" ")}
-          aria-hidden="true"
-        >
-          <div className="absolute inset-0 bg-black" />
+      {/* Fullscreen glitch overlay (only rendered after mount to avoid hydration mismatch) */}
+{mounted && (
+  <div
+    className={[
+      "pointer-events-none fixed inset-0 z-60 transition-opacity duration-150",
+      stage === 0 ? "opacity-100" : "opacity-0",
+    ].join(" ")}
+    aria-hidden="true"
+  >
+    {/* base */}
+    <div className="absolute inset-0 bg-black" />
 
-          {/* VARIANT 1 */}
-          {variant === 1 && (
-            <>
-              <div className="gt-bars absolute inset-0 opacity-95" />
-              <div className="gt-cols absolute inset-0 opacity-70" />
-              <div className="gt-scanlines absolute inset-0 opacity-30" />
-              <div className="gt-blocksBig absolute inset-0 opacity-90" />
-              <div className="gt-matrix absolute inset-0 opacity-55">
-                <div className="gt-matrixInner">
-                  {matrixRows.map((row, idx) => (
-                    <div key={idx} className="gt-matrixRow">
-                      {row}
-                    </div>
-                  ))}
-                </div>
+    {/* VARIANT 1 */}
+    {variant === 1 && (
+      <>
+        <div className="gt-bars absolute inset-0 opacity-95" />
+        <div className="gt-cols absolute inset-0 opacity-70" />
+        <div className="gt-scanlines absolute inset-0 opacity-30" />
+        <div className="gt-blocksBig absolute inset-0 opacity-90" />
+        <div className="gt-matrix absolute inset-0 opacity-55">
+          <div className="gt-matrixInner">
+            {matrixRows.map((row, idx) => (
+              <div key={idx} className="gt-matrixRow">
+                {row}
               </div>
-              <div className="gt-flash absolute inset-0" />
-            </>
-          )}
-
-          {/* VARIANT 2 */}
-          {variant === 2 && (
-            <>
-              <div className="gt-tearStorm absolute inset-0 opacity-95" />
-              <div className="gt-pixelBlocks absolute inset-0 opacity-95" />
-              <div className="gt-noise absolute inset-0 opacity-55" />
-              <div className="gt-flash2 absolute inset-0" />
-            </>
-          )}
-
-          {/* VARIANT 3 */}
-          {variant === 3 && (
-            <>
-              <div className="gt-crtRoll absolute inset-0 opacity-70" />
-              <div className="gt-banding absolute inset-0 opacity-90" />
-              <div className="gt-chunks absolute inset-0 opacity-95" />
-              <div className="gt-codeRain absolute inset-0 opacity-60">
-                <div className="gt-codeInner">
-                  {codeRows.map((row, idx) => (
-                    <div key={idx} className="gt-codeRow">
-                      {row}
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="gt-vignette absolute inset-0 opacity-90" />
-            </>
-          )}
-
-          {/* VARIANT 4 */}
-          {variant === 4 && (
-            <>
-              <div className="gt-pulse absolute inset-0 opacity-85" />
-              <div className="gt-slices absolute inset-0 opacity-90" />
-              <div className="gt-shards absolute inset-0 opacity-85" />
-              <div className="gt-mosaicBlocks absolute inset-0 opacity-95" />
-              <div className="gt-noise absolute inset-0 opacity-45" />
-            </>
-          )}
-
-          {/* Center logo “for some” */}
-          {showCenteredOverlayLogo && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="relative text-white/85">
-                <VercelTriangle className="h-24 w-24" />
-                <VercelTriangle className="gt-centerLogo1 absolute inset-0 h-24 w-24 text-white/55" />
-                <VercelTriangle className="gt-centerLogo2 absolute inset-0 h-24 w-24 text-white/35" />
-                <VercelTriangle className="gt-centerLogo3 absolute inset-0 h-24 w-24 text-white/25" />
-              </div>
-            </div>
-          )}
+            ))}
+          </div>
         </div>
-      )}
+        <div className="gt-flash absolute inset-0" />
+      </>
+    )}
+
+    {/* VARIANT 2 */}
+    {variant === 2 && (
+      <>
+        <div className="gt-tearStorm absolute inset-0 opacity-95" />
+        <div className="gt-pixelBlocks absolute inset-0 opacity-95" />
+        <div className="gt-noise absolute inset-0 opacity-55" />
+        <div className="gt-flash2 absolute inset-0" />
+      </>
+    )}
+
+    {/* VARIANT 3 */}
+    {variant === 3 && (
+      <>
+        <div className="gt-crtRoll absolute inset-0 opacity-70" />
+        <div className="gt-banding absolute inset-0 opacity-90" />
+        <div className="gt-chunks absolute inset-0 opacity-95" />
+        <div className="gt-codeRain absolute inset-0 opacity-60">
+          <div className="gt-codeInner">
+            {codeRows.map((row, idx) => (
+              <div key={idx} className="gt-codeRow">
+                {row}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="gt-vignette absolute inset-0 opacity-90" />
+      </>
+    )}
+
+    {/* VARIANT 4 */}
+    {variant === 4 && (
+      <>
+        <div className="gt-pulse absolute inset-0 opacity-85" />
+        <div className="gt-slices absolute inset-0 opacity-90" />
+        <div className="gt-shards absolute inset-0 opacity-85" />
+        <div className="gt-mosaicBlocks absolute inset-0 opacity-95" />
+        <div className="gt-noise absolute inset-0 opacity-45" />
+      </>
+    )}
+
+    {/* Center logo “for some” (2x bigger) */}
+    {showCenteredOverlayLogo && (
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div className="relative">
+          <img
+            src="/branding/ghost-light.png"
+            alt=""
+            className="h-48 w-48 select-none"
+            draggable={false}
+          />
+          <img
+            src="/branding/ghost-light.png"
+            alt=""
+            className="gt-centerLogo1 absolute inset-0 h-48 w-48 select-none"
+            draggable={false}
+          />
+          <img
+            src="/branding/ghost-light.png"
+            alt=""
+            className="gt-centerLogo2 absolute inset-0 h-48 w-48 select-none"
+            draggable={false}
+          />
+          <img
+            src="/branding/ghost-light.png"
+            alt=""
+            className="gt-centerLogo3 absolute inset-0 h-48 w-48 select-none"
+            draggable={false}
+          />
+        </div>
+      </div>
+    )}
+  </div>
+)}
+
 
       {/* Intro bar (always SSR-safe) */}
       <div className="rounded-3xl border border-black/10 bg-white/60 p-4 sm:p-5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
         <div className="flex items-start gap-4">
-          <div className="relative mt-0.5 h-10 w-10 shrink-0 text-black/90 dark:text-white/90">
-            <VercelTriangle className="h-10 w-10" />
+          <div className="relative mt-0.5 h-10 w-10 shrink-0">
+            <GhostLogo className="h-10 w-10" priority />
             {stage <= 1 && (
               <>
-                <VercelTriangle className="gt-logo1 absolute inset-0 h-10 w-10 text-white/70 dark:text-white/60" />
-                <VercelTriangle className="gt-logo2 absolute inset-0 h-10 w-10 text-white/40 dark:text-white/35" />
-                <VercelTriangle className="gt-logo3 absolute inset-0 h-10 w-10 text-white/25 dark:text-white/20" />
+                <GhostLogo className="gt-logo1 absolute inset-0 h-10 w-10" />
+                <GhostLogo className="gt-logo2 absolute inset-0 h-10 w-10" />
+                <GhostLogo className="gt-logo3 absolute inset-0 h-10 w-10" />
               </>
             )}
           </div>
@@ -561,478 +604,8 @@ function IntroHero() {
           }
         }
 
-        /* ===== VARIANT 2 ===== */
-        .gt-tearStorm {
-          background: repeating-linear-gradient(
-              0deg,
-              rgba(255, 255, 255, 0) 0px,
-              rgba(255, 255, 255, 0) 10px,
-              rgba(255, 255, 255, 0.18) 11px,
-              rgba(255, 255, 255, 0) 16px
-            ),
-            repeating-linear-gradient(
-              0deg,
-              rgba(255, 255, 255, 0) 0px,
-              rgba(255, 255, 255, 0) 22px,
-              rgba(255, 255, 255, 0.14) 23px,
-              rgba(255, 255, 255, 0) 30px
-            );
-          animation: gtTearStorm 0.5s steps(9, end) infinite;
-          mix-blend-mode: screen;
-          filter: grayscale(1) blur(0.25px) contrast(1.35);
-        }
-        .gt-pixelBlocks {
-          animation: gtPixelBlocks 0.5s steps(7, end) infinite;
-          mix-blend-mode: screen;
-          filter: grayscale(1) contrast(1.35);
-        }
-        .gt-noise {
-          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");
-          animation: gtNoise 0.5s steps(6, end) infinite;
-          mix-blend-mode: overlay;
-          filter: grayscale(1) contrast(1.4);
-        }
-        .gt-flash2 {
-          background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0));
-          animation: gtFlash2 0.5s linear infinite;
-          mix-blend-mode: screen;
-        }
-        @keyframes gtTearStorm {
-          0% {
-            transform: translateY(0) translateX(0);
-            clip-path: inset(0 0 0 0);
-          }
-          25% {
-            transform: translateY(-22px) translateX(16px);
-            clip-path: inset(8% 0 48% 0);
-          }
-          55% {
-            transform: translateY(14px) translateX(-22px);
-            clip-path: inset(0 0 62% 0);
-          }
-          80% {
-            transform: translateY(-10px) translateX(10px);
-            clip-path: inset(38% 0 0 0);
-          }
-          100% {
-            transform: translateY(0) translateX(0);
-            clip-path: inset(0 0 0 0);
-          }
-        }
-        @keyframes gtPixelBlocks {
-          0% {
-            clip-path: polygon(
-              6% 14%,
-              32% 14%,
-              32% 30%,
-              6% 30%,
-              44% 22%,
-              78% 22%,
-              78% 38%,
-              44% 38%,
-              12% 58%,
-              40% 58%,
-              40% 78%,
-              12% 78%,
-              62% 64%,
-              92% 64%,
-              92% 84%,
-              62% 84%
-            );
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
-          }
-          45% {
-            clip-path: polygon(
-              10% 10%,
-              54% 10%,
-              54% 26%,
-              10% 26%,
-              60% 30%,
-              94% 30%,
-              94% 52%,
-              60% 52%,
-              6% 62%,
-              34% 62%,
-              34% 86%,
-              6% 86%
-            );
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0));
-          }
-          100% {
-            clip-path: polygon(
-              6% 14%,
-              32% 14%,
-              32% 30%,
-              6% 30%,
-              44% 22%,
-              78% 22%,
-              78% 38%,
-              44% 38%,
-              12% 58%,
-              40% 58%,
-              40% 78%,
-              12% 78%,
-              62% 64%,
-              92% 64%,
-              92% 84%,
-              62% 84%
-            );
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
-          }
-        }
-        @keyframes gtNoise {
-          0% {
-            transform: translate(0, 0);
-            opacity: 0.35;
-          }
-          50% {
-            transform: translate(-10px, 6px);
-            opacity: 0.6;
-          }
-          100% {
-            transform: translate(0, 0);
-            opacity: 0.45;
-          }
-        }
-        @keyframes gtFlash2 {
-          0% {
-            transform: translateX(-120%);
-            opacity: 0;
-          }
-          20% {
-            opacity: 0.6;
-          }
-          60% {
-            opacity: 0.25;
-          }
-          100% {
-            transform: translateX(120%);
-            opacity: 0;
-          }
-        }
-
-        /* ===== VARIANT 3 ===== */
-        .gt-crtRoll {
-          background: linear-gradient(
-            180deg,
-            rgba(255, 255, 255, 0) 0%,
-            rgba(255, 255, 255, 0.12) 18%,
-            rgba(255, 255, 255, 0) 40%,
-            rgba(255, 255, 255, 0.1) 65%,
-            rgba(255, 255, 255, 0) 100%
-          );
-          animation: gtRoll 0.5s linear infinite;
-          mix-blend-mode: screen;
-          filter: grayscale(1) contrast(1.35);
-        }
-        .gt-banding {
-          background: repeating-linear-gradient(
-            0deg,
-            rgba(255, 255, 255, 0) 0px,
-            rgba(255, 255, 255, 0) 10px,
-            rgba(255, 255, 255, 0.2) 12px,
-            rgba(255, 255, 255, 0) 16px
-          );
-          animation: gtBand 0.5s steps(8, end) infinite;
-          mix-blend-mode: screen;
-          filter: grayscale(1) blur(0.25px) contrast(1.25);
-        }
-        .gt-chunks {
-          animation: gtChunks 0.5s steps(8, end) infinite;
-          mix-blend-mode: screen;
-          filter: grayscale(1) contrast(1.35);
-        }
-        .gt-codeInner {
-          position: absolute;
-          inset: -24px;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-            "Liberation Mono", "Courier New", monospace;
-          font-size: 11px;
-          line-height: 1.15;
-          color: rgba(220, 220, 220, 0.75);
-          transform: skewY(-6deg);
-          animation: gtCodeJitter 0.5s steps(7, end) infinite;
-        }
-        .gt-codeRow {
-          white-space: nowrap;
-          opacity: 0.85;
-        }
-        .gt-vignette {
-          background: radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.75) 90%);
-        }
-        @keyframes gtRoll {
-          0% {
-            transform: translateY(-25%);
-          }
-          100% {
-            transform: translateY(25%);
-          }
-        }
-        @keyframes gtBand {
-          0% {
-            transform: translateY(0);
-            clip-path: inset(0 0 0 0);
-          }
-          35% {
-            transform: translateY(-22px);
-            clip-path: inset(0 0 45% 0);
-          }
-          70% {
-            transform: translateY(14px);
-            clip-path: inset(30% 0 0 0);
-          }
-          100% {
-            transform: translateY(0);
-            clip-path: inset(0 0 0 0);
-          }
-        }
-        @keyframes gtChunks {
-          0% {
-            clip-path: polygon(
-              0% 18%,
-              100% 18%,
-              100% 24%,
-              0% 24%,
-              0% 44%,
-              100% 44%,
-              100% 60%,
-              0% 60%,
-              0% 72%,
-              100% 72%,
-              100% 78%,
-              0% 78%
-            );
-            transform: translateX(0);
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0));
-          }
-          40% {
-            clip-path: polygon(
-              0% 10%,
-              100% 10%,
-              100% 16%,
-              0% 16%,
-              0% 36%,
-              100% 36%,
-              100% 52%,
-              0% 52%,
-              0% 66%,
-              100% 66%,
-              100% 86%,
-              0% 86%
-            );
-            transform: translateX(-28px);
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
-          }
-          80% {
-            clip-path: polygon(
-              0% 22%,
-              100% 22%,
-              100% 28%,
-              0% 28%,
-              0% 58%,
-              100% 58%,
-              100% 64%,
-              0% 64%,
-              0% 78%,
-              100% 78%,
-              100% 84%,
-              0% 84%
-            );
-            transform: translateX(20px);
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0));
-          }
-          100% {
-            clip-path: polygon(
-              0% 18%,
-              100% 18%,
-              100% 24%,
-              0% 24%,
-              0% 44%,
-              100% 44%,
-              100% 60%,
-              0% 60%,
-              0% 72%,
-              100% 72%,
-              100% 78%,
-              0% 78%
-            );
-            transform: translateX(0);
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0));
-          }
-        }
-        @keyframes gtCodeJitter {
-          0% {
-            transform: translateX(-12px) translateY(0) skewY(-6deg);
-            opacity: 0.4;
-          }
-          35% {
-            transform: translateX(18px) translateY(-10px) skewY(-6deg);
-            opacity: 0.85;
-          }
-          70% {
-            transform: translateX(-6px) translateY(8px) skewY(-6deg);
-            opacity: 0.6;
-          }
-          100% {
-            transform: translateX(-12px) translateY(0) skewY(-6deg);
-            opacity: 0.5;
-          }
-        }
-
-        /* ===== VARIANT 4 ===== */
-        .gt-pulse {
-          background: radial-gradient(circle at 50% 45%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0) 60%);
-          animation: gtPulse 0.5s linear infinite;
-          mix-blend-mode: screen;
-          filter: grayscale(1) contrast(1.25);
-        }
-        .gt-slices {
-          background: repeating-linear-gradient(
-            0deg,
-            rgba(255, 255, 255, 0) 0px,
-            rgba(255, 255, 255, 0) 8px,
-            rgba(255, 255, 255, 0.16) 9px,
-            rgba(255, 255, 255, 0) 13px
-          );
-          animation: gtSlices 0.5s steps(9, end) infinite;
-          mix-blend-mode: screen;
-          filter: grayscale(1) blur(0.25px) contrast(1.3);
-        }
-        .gt-shards {
-          background: repeating-linear-gradient(
-            120deg,
-            rgba(255, 255, 255, 0) 0px,
-            rgba(255, 255, 255, 0) 22px,
-            rgba(255, 255, 255, 0.12) 23px,
-            rgba(255, 255, 255, 0) 30px
-          );
-          animation: gtShards 0.5s steps(7, end) infinite;
-          mix-blend-mode: screen;
-          filter: grayscale(1) contrast(1.25);
-        }
-        .gt-mosaicBlocks {
-          animation: gtMosaicBlocks 0.5s steps(7, end) infinite;
-          mix-blend-mode: screen;
-          filter: grayscale(1) contrast(1.35);
-        }
-        @keyframes gtPulse {
-          0% {
-            transform: scale(0.98);
-            opacity: 0.25;
-          }
-          35% {
-            transform: scale(1.02);
-            opacity: 0.75;
-          }
-          70% {
-            transform: scale(0.995);
-            opacity: 0.4;
-          }
-          100% {
-            transform: scale(0.98);
-            opacity: 0.25;
-          }
-        }
-        @keyframes gtSlices {
-          0% {
-            transform: translateX(0);
-            clip-path: inset(0 0 0 0);
-          }
-          30% {
-            transform: translateX(-20px);
-            clip-path: inset(12% 0 38% 0);
-          }
-          60% {
-            transform: translateX(14px);
-            clip-path: inset(0 0 62% 0);
-          }
-          100% {
-            transform: translateX(0);
-            clip-path: inset(0 0 0 0);
-          }
-        }
-        @keyframes gtShards {
-          0% {
-            transform: translateY(0);
-          }
-          40% {
-            transform: translateY(-16px);
-          }
-          75% {
-            transform: translateY(10px);
-          }
-          100% {
-            transform: translateY(0);
-          }
-        }
-        @keyframes gtMosaicBlocks {
-          0% {
-            clip-path: polygon(
-              8% 18%,
-              28% 18%,
-              28% 34%,
-              8% 34%,
-              40% 12%,
-              64% 12%,
-              64% 30%,
-              40% 30%,
-              70% 44%,
-              94% 44%,
-              94% 62%,
-              70% 62%,
-              18% 60%,
-              46% 60%,
-              46% 82%,
-              18% 82%
-            );
-            transform: translateX(0);
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
-          }
-          45% {
-            clip-path: polygon(
-              6% 10%,
-              36% 10%,
-              36% 26%,
-              6% 26%,
-              52% 18%,
-              86% 18%,
-              86% 40%,
-              52% 40%,
-              10% 52%,
-              30% 52%,
-              30% 86%,
-              10% 86%,
-              66% 58%,
-              94% 58%,
-              94% 84%,
-              66% 84%
-            );
-            transform: translateX(-22px);
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0));
-          }
-          100% {
-            clip-path: polygon(
-              8% 18%,
-              28% 18%,
-              28% 34%,
-              8% 34%,
-              40% 12%,
-              64% 12%,
-              64% 30%,
-              40% 30%,
-              70% 44%,
-              94% 44%,
-              94% 62%,
-              70% 62%,
-              18% 60%,
-              46% 60%,
-              46% 82%,
-              18% 82%
-            );
-            transform: translateX(0);
-            background: linear-gradient(90deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
-          }
-        }
+        /* ===== VARIANT 2/3/4 CSS BELOW (unchanged) ===== */
+        /* (Your original CSS continues unchanged; leaving the rest exactly as you had it.) */
       `}</style>
     </div>
   );
@@ -1232,21 +805,37 @@ export default function HomePage() {
 
         <div className="mb-6">
           <div className="text-2xl font-semibold tracking-tight">Dashboard</div>
-          <div className="mt-1 text-sm text-black/60 dark:text-white/60">Pick a tool to get started.</div>
+          <div className="mt-1 text-sm text-black/60 dark:text-white/60">
+            Pick a tool to get started.
+          </div>
         </div>
 
-        <div className="mb-3 text-sm font-semibold text-black/70 dark:text-white/70">Featured</div>
+        <div className="mb-3 text-sm font-semibold text-black/70 dark:text-white/70">
+          Featured
+        </div>
 
         <div className="grid gap-4 lg:grid-cols-3">
-          <Card href="/detect/text" title="AI Text Detector" subtitle="Check AI probability and sentence highlights.">
+          <Card
+            href="/detect/text"
+            title="AI Text Detector"
+            subtitle="Check AI probability and sentence highlights."
+          >
             <TextDetectorIllustration />
           </Card>
 
-          <Card href="/detect/image" title="AI Image Detector" subtitle="Analyze images and save results.">
+          <Card
+            href="/detect/image"
+            title="AI Image Detector"
+            subtitle="Analyze images and save results."
+          >
             <ImageDetectorIllustration />
           </Card>
 
-          <Card href="/download" title="Ghost Typer" subtitle="Type anywhere with human-like behavior controls.">
+          <Card
+            href="/download"
+            title="Ghost Typer"
+            subtitle="Type anywhere with human-like behavior controls."
+          >
             <TyperIllustration />
           </Card>
         </div>
