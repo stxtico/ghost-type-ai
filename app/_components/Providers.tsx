@@ -1,8 +1,20 @@
 "use client";
 
 import React from "react";
-import { LanguageProvider } from "./LanguageProvider";
+
+// ✅ IMPORTANT: your ThemeProvider is a NAMED export
+import { ThemeProvider } from "@/app/_components/ThemeProvider";
+
+// If you have these providers, keep them. If not, delete their imports + wrappers.
+import { LanguageProvider } from "@/app/_components/LanguageProvider";
+import { WallpaperProvider } from "@/app/_components/WallpaperProvider";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  return <LanguageProvider>{children}</LanguageProvider>;
+  return (
+    <ThemeProvider>
+      <LanguageProvider>
+        <WallpaperProvider>{children}</WallpaperProvider>
+      </LanguageProvider>
+    </ThemeProvider>
+  );
 }
