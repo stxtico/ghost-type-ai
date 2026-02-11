@@ -71,11 +71,11 @@ export default function LoginClient() {
     // IMPORTANT: redirect back to a real page on your domain, NOT /account hardcoded.
     // We send to /auth/callback and then that page will route to `next`.
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextUrl)}`,
-      },
-    });
+  provider: "google",
+  options: {
+    redirectTo: window.location.origin,
+  },
+});
 
     setOauthLoading(false);
     if (error) setMsg(error.message);
