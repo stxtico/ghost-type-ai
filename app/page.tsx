@@ -29,12 +29,8 @@ function Card({
       </div>
 
       <div className="mt-4">
-        <div className="text-sm font-semibold tracking-tight text-black/90 dark:text-white/90">
-          {title}
-        </div>
-        <div className="mt-1 text-xs text-black/60 dark:text-white/60">
-          {subtitle}
-        </div>
+        <div className="text-sm font-semibold tracking-tight text-black/90 dark:text-white/90">{title}</div>
+        <div className="mt-1 text-xs text-black/60 dark:text-white/60">{subtitle}</div>
       </div>
     </Link>
   );
@@ -45,13 +41,7 @@ function Card({
  * File: /public/branding/ghost-light.png
  * URL:  /branding/ghost-light.png
  */
-function GhostLogo({
-  className,
-  priority,
-}: {
-  className?: string;
-  priority?: boolean;
-}) {
+function GhostLogo({ className, priority }: { className?: string; priority?: boolean }) {
   return (
     <Image
       src="/branding/ghost-light.png"
@@ -65,20 +55,15 @@ function GhostLogo({
   );
 }
 
-type GlitchVariant = 1 | 2 | 3 | 4;
-
 function IntroHero() {
   // 0 = glitch overlay, 1 = show logo, 2 = type intro
   const [stage, setStage] = useState<0 | 1 | 2>(0);
 
-  // ✅ SSR-safe: start deterministic, then randomize AFTER mount
+  // ✅ SSR-safe: nothing random during SSR
   const [mounted, setMounted] = useState(false);
-  const [variant, setVariant] = useState<GlitchVariant>(1);
 
   // ✅ pre-generated rows so we don't call Math.random during render
   const [matrixRows, setMatrixRows] = useState<string[]>([]);
-  const [codeRows, setCodeRows] = useState<string[]>([]);
-
   const [typed, setTyped] = useState("");
 
   const intro = useMemo(
@@ -89,18 +74,12 @@ function IntroHero() {
 
   useEffect(() => {
     setMounted(true);
-
-    // pick random glitch style client-side only
-    const r = (Math.floor(Math.random() * 4) + 1) as GlitchVariant;
-    setVariant(r);
-
-    // generate “hacking” rows client-side only
+    // generate “hacking” rows client-side only (prevents hydration mismatch)
     setMatrixRows(Array.from({ length: 36 }).map(() => randomHackRow(150)));
-    setCodeRows(Array.from({ length: 26 }).map(() => randomHackRow(165)));
   }, []);
 
   useEffect(() => {
-    // glitch overlay ~0.5s
+    // single glitch overlay ~0.5s, then type
     const t1 = window.setTimeout(() => setStage(1), 520);
     const t2 = window.setTimeout(() => setStage(2), 760);
     return () => {
@@ -122,122 +101,62 @@ function IntroHero() {
     return () => window.clearInterval(tick);
   }, [stage, intro]);
 
-  // "for some" variants show centered logo
-  const showCenteredOverlayLogo = variant === 2 || variant === 4;
-
-  // ✅ During SSR (mounted=false), we render NOTHING random.
-  // We still show the normal intro bar, and the overlay is hidden until mounted.
   return (
     <div className="relative mb-6">
-      {/* Fullscreen glitch overlay (only rendered after mount to avoid hydration mismatch) */}
-      {/* Fullscreen glitch overlay (only rendered after mount to avoid hydration mismatch) */}
-{mounted && (
-  <div
-    className={[
-      "pointer-events-none fixed inset-0 z-60 transition-opacity duration-150",
-      stage === 0 ? "opacity-100" : "opacity-0",
-    ].join(" ")}
-    aria-hidden="true"
-  >
-    {/* base */}
-    <div className="absolute inset-0 bg-black" />
+      {/* Fullscreen glitch overlay (ONLY after mount; avoids hydration mismatch) */}
+      {mounted && (
+        <div
+          className={[
+            "pointer-events-none fixed inset-0 z-60 transition-opacity duration-150",
+            stage === 0 ? "opacity-100" : "opacity-0",
+          ].join(" ")}
+          aria-hidden="true"
+        >
+          {/* base */}
+          <div className="absolute inset-0 bg-black" />
 
-    {/* VARIANT 1 */}
-    {variant === 1 && (
-      <>
-        <div className="gt-bars absolute inset-0 opacity-95" />
-        <div className="gt-cols absolute inset-0 opacity-70" />
-        <div className="gt-scanlines absolute inset-0 opacity-30" />
-        <div className="gt-blocksBig absolute inset-0 opacity-90" />
-        <div className="gt-matrix absolute inset-0 opacity-55">
-          <div className="gt-matrixInner">
-            {matrixRows.map((row, idx) => (
-              <div key={idx} className="gt-matrixRow">
-                {row}
+          {/* single glitch style */}
+          <>
+            <div className="gt-bars absolute inset-0 opacity-95" />
+            <div className="gt-cols absolute inset-0 opacity-70" />
+            <div className="gt-scanlines absolute inset-0 opacity-30" />
+            <div className="gt-blocksBig absolute inset-0 opacity-90" />
+            <div className="gt-matrix absolute inset-0 opacity-55">
+              <div className="gt-matrixInner">
+                {matrixRows.map((row, idx) => (
+                  <div key={idx} className="gt-matrixRow">
+                    {row}
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+            <div className="gt-flash absolute inset-0" />
+          </>
+
+          {/* centered logo (ALWAYS) */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="relative">
+              {/* base */}
+              <img src="/branding/ghost-light.png" alt="" className="h-48 w-48 select-none" draggable={false} />
+              {/* burst glitch layers */}
+              <img
+                src="/branding/ghost-light.png"
+                alt=""
+                className="gt-center1 absolute inset-0 h-48 w-48 select-none"
+                draggable={false}
+              />
+              <img
+                src="/branding/ghost-light.png"
+                alt=""
+                className="gt-center2 absolute inset-0 h-48 w-48 select-none"
+                draggable={false}
+              />
+            </div>
           </div>
         </div>
-        <div className="gt-flash absolute inset-0" />
-      </>
-    )}
+      )}
 
-    {/* VARIANT 2 */}
-    {variant === 2 && (
-      <>
-        <div className="gt-tearStorm absolute inset-0 opacity-95" />
-        <div className="gt-pixelBlocks absolute inset-0 opacity-95" />
-        <div className="gt-noise absolute inset-0 opacity-55" />
-        <div className="gt-flash2 absolute inset-0" />
-      </>
-    )}
-
-    {/* VARIANT 3 */}
-    {variant === 3 && (
-      <>
-        <div className="gt-crtRoll absolute inset-0 opacity-70" />
-        <div className="gt-banding absolute inset-0 opacity-90" />
-        <div className="gt-chunks absolute inset-0 opacity-95" />
-        <div className="gt-codeRain absolute inset-0 opacity-60">
-          <div className="gt-codeInner">
-            {codeRows.map((row, idx) => (
-              <div key={idx} className="gt-codeRow">
-                {row}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="gt-vignette absolute inset-0 opacity-90" />
-      </>
-    )}
-
-    {/* VARIANT 4 */}
-    {variant === 4 && (
-      <>
-        <div className="gt-pulse absolute inset-0 opacity-85" />
-        <div className="gt-slices absolute inset-0 opacity-90" />
-        <div className="gt-shards absolute inset-0 opacity-85" />
-        <div className="gt-mosaicBlocks absolute inset-0 opacity-95" />
-        <div className="gt-noise absolute inset-0 opacity-45" />
-      </>
-    )}
-
-    {/* Center logo “for some” (2x bigger) */}
-    {showCenteredOverlayLogo && (
-      <div className="absolute inset-0 flex items-center justify-center">
-        <div className="relative">
-          <img
-            src="/branding/ghost-light.png"
-            alt=""
-            className="h-48 w-48 select-none"
-            draggable={false}
-          />
-          <img
-            src="/branding/ghost-light.png"
-            alt=""
-            className="gt-centerLogo1 absolute inset-0 h-48 w-48 select-none"
-            draggable={false}
-          />
-          <img
-            src="/branding/ghost-light.png"
-            alt=""
-            className="gt-centerLogo2 absolute inset-0 h-48 w-48 select-none"
-            draggable={false}
-          />
-          <img
-            src="/branding/ghost-light.png"
-            alt=""
-            className="gt-centerLogo3 absolute inset-0 h-48 w-48 select-none"
-            draggable={false}
-          />
-        </div>
-      </div>
-    )}
-  </div>
-)}
-
-
-      {/* Intro bar (always SSR-safe) */}
+      {/* Intro bar (SSR-safe) */}
       <div className="rounded-3xl border border-black/10 bg-white/60 p-4 sm:p-5 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/5">
         <div className="flex items-start gap-4">
           <div className="relative mt-0.5 h-10 w-10 shrink-0">
@@ -284,16 +203,19 @@ function IntroHero() {
           animation: gtLogo1 0.45s steps(6, end) infinite;
           mix-blend-mode: screen;
           opacity: 0.55;
+          filter: grayscale(1) contrast(1.15);
         }
         .gt-logo2 {
           animation: gtLogo2 0.45s steps(6, end) infinite;
           mix-blend-mode: screen;
           opacity: 0.4;
+          filter: grayscale(1) contrast(1.15);
         }
         .gt-logo3 {
           animation: gtLogo3 0.45s steps(6, end) infinite;
           mix-blend-mode: screen;
           opacity: 0.28;
+          filter: grayscale(1) contrast(1.15);
         }
         @keyframes gtLogo1 {
           0% {
@@ -350,70 +272,69 @@ function IntroHero() {
           }
         }
 
-        /* ===== centered overlay logo glitch ===== */
-        .gt-centerLogo1 {
-          animation: gtCenter1 0.5s steps(7, end) infinite;
+        /* ===== centered overlay logo glitch (SUDDEN burst) ===== */
+        .gt-center1 {
+          animation: gtBurst1 0.12s steps(1, end) infinite;
           mix-blend-mode: screen;
-          opacity: 0.55;
+          opacity: 0.75;
+          filter: grayscale(1) contrast(1.2);
         }
-        .gt-centerLogo2 {
-          animation: gtCenter2 0.5s steps(7, end) infinite;
+        .gt-center2 {
+          animation: gtBurst2 0.12s steps(1, end) infinite;
           mix-blend-mode: screen;
-          opacity: 0.35;
+          opacity: 0.45;
+          filter: grayscale(1) contrast(1.2);
         }
-        .gt-centerLogo3 {
-          animation: gtCenter3 0.5s steps(7, end) infinite;
-          mix-blend-mode: screen;
-          opacity: 0.25;
-        }
-        @keyframes gtCenter1 {
-          0% {
-            transform: translate(0, 0) scale(1);
-            clip-path: inset(0 0 0 0);
-          }
-          25% {
-            transform: translate(-6px, 2px) scale(1.01);
-            clip-path: inset(18% 0 35% 0);
-          }
-          55% {
-            transform: translate(6px, -2px) scale(0.99);
-            clip-path: inset(0 0 55% 0);
-          }
-          100% {
-            transform: translate(0, 0) scale(1);
-            clip-path: inset(0 0 0 0);
-          }
-        }
-        @keyframes gtCenter2 {
+        @keyframes gtBurst1 {
           0% {
             transform: translate(0, 0);
+            clip-path: inset(0 0 0 0);
           }
-          35% {
-            transform: translate(8px, 0px);
+          15% {
+            transform: translate(-12px, 4px);
+            clip-path: inset(18% 0 58% 0);
           }
-          70% {
-            transform: translate(-6px, 2px);
+          30% {
+            transform: translate(14px, -6px);
+            clip-path: inset(0 0 72% 0);
+          }
+          45% {
+            transform: translate(-10px, -2px);
+            clip-path: inset(52% 0 0 0);
+          }
+          60% {
+            transform: translate(10px, 3px);
+            clip-path: inset(8% 0 40% 0);
           }
           100% {
             transform: translate(0, 0);
+            clip-path: inset(0 0 0 0);
           }
         }
-        @keyframes gtCenter3 {
+        @keyframes gtBurst2 {
           0% {
             transform: translate(0, 0);
+            clip-path: inset(0 0 0 0);
+          }
+          20% {
+            transform: translate(18px, 0px);
+            clip-path: inset(28% 0 42% 0);
           }
           40% {
-            transform: translate(-10px, -2px);
+            transform: translate(-16px, 6px);
+            clip-path: inset(0 0 62% 0);
           }
-          80% {
-            transform: translate(8px, 2px);
+          65% {
+            transform: translate(12px, -4px);
+            clip-path: inset(60% 0 0 0);
           }
           100% {
             transform: translate(0, 0);
+            clip-path: inset(0 0 0 0);
           }
         }
 
-        /* ===== VARIANT 1 ===== */
+        /* ===== single glitch overlay (variant 1 styling) ===== */
         .gt-bars {
           background: repeating-linear-gradient(
             0deg,
@@ -458,8 +379,8 @@ function IntroHero() {
         .gt-matrixInner {
           position: absolute;
           inset: -20px;
-          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-            "Liberation Mono", "Courier New", monospace;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+            "Courier New", monospace;
           font-size: 12px;
           line-height: 1.2;
           color: rgba(220, 220, 220, 0.75);
@@ -472,7 +393,11 @@ function IntroHero() {
           animation: gtMatrixFlicker 0.5s steps(6, end) infinite;
         }
         .gt-flash {
-          background: radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0) 60%);
+          background: radial-gradient(
+            circle at 50% 40%,
+            rgba(255, 255, 255, 0.14),
+            rgba(255, 255, 255, 0) 60%
+          );
           animation: gtFlash 0.5s linear infinite;
           mix-blend-mode: screen;
         }
@@ -603,9 +528,6 @@ function IntroHero() {
             transform: translateX(0);
           }
         }
-
-        /* ===== VARIANT 2/3/4 CSS BELOW (unchanged) ===== */
-        /* (Your original CSS continues unchanged; leaving the rest exactly as you had it.) */
       `}</style>
     </div>
   );
@@ -629,7 +551,15 @@ function TextDetectorIllustration() {
       <svg viewBox="0 0 520 292" className="h-full w-full">
         <rect x="0" y="0" width="520" height="292" rx="26" fill="rgba(0,0,0,0.02)" />
         <g>
-          <rect x="28" y="28" width="220" height="236" rx="22" fill="rgba(255,255,255,0.55)" stroke="rgba(0,0,0,0.10)" />
+          <rect
+            x="28"
+            y="28"
+            width="220"
+            height="236"
+            rx="22"
+            fill="rgba(255,255,255,0.55)"
+            stroke="rgba(0,0,0,0.10)"
+          />
           <rect x="52" y="54" width="78" height="26" rx="13" fill="rgba(0,0,0,0.08)" />
           <rect x="52" y="98" width="178" height="10" rx="5" fill="rgba(0,0,0,0.08)" />
           <rect x="52" y="118" width="140" height="10" rx="5" fill="rgba(0,0,0,0.08)" />
@@ -640,7 +570,15 @@ function TextDetectorIllustration() {
         </g>
 
         <g>
-          <rect x="272" y="28" width="220" height="236" rx="22" fill="rgba(255,255,255,0.55)" stroke="rgba(0,0,0,0.10)" />
+          <rect
+            x="272"
+            y="28"
+            width="220"
+            height="236"
+            rx="22"
+            fill="rgba(255,255,255,0.55)"
+            stroke="rgba(0,0,0,0.10)"
+          />
           <rect x="296" y="54" width="98" height="10" rx="5" fill="rgba(0,0,0,0.08)" />
           <rect x="412" y="54" width="56" height="10" rx="5" fill="rgba(0,0,0,0.08)" />
 
@@ -805,37 +743,21 @@ export default function HomePage() {
 
         <div className="mb-6">
           <div className="text-2xl font-semibold tracking-tight">Dashboard</div>
-          <div className="mt-1 text-sm text-black/60 dark:text-white/60">
-            Pick a tool to get started.
-          </div>
+          <div className="mt-1 text-sm text-black/60 dark:text-white/60">Pick a tool to get started.</div>
         </div>
 
-        <div className="mb-3 text-sm font-semibold text-black/70 dark:text-white/70">
-          Featured
-        </div>
+        <div className="mb-3 text-sm font-semibold text-black/70 dark:text-white/70">Featured</div>
 
         <div className="grid gap-4 lg:grid-cols-3">
-          <Card
-            href="/detect/text"
-            title="AI Text Detector"
-            subtitle="Check AI probability and sentence highlights."
-          >
+          <Card href="/detect/text" title="AI Text Detector" subtitle="Check AI probability and sentence highlights.">
             <TextDetectorIllustration />
           </Card>
 
-          <Card
-            href="/detect/image"
-            title="AI Image Detector"
-            subtitle="Analyze images and save results."
-          >
+          <Card href="/detect/image" title="AI Image Detector" subtitle="Analyze images and save results.">
             <ImageDetectorIllustration />
           </Card>
 
-          <Card
-            href="/download"
-            title="Ghost Typer"
-            subtitle="Type anywhere with human-like behavior controls."
-          >
+          <Card href="/download" title="Ghost Typer" subtitle="Type anywhere with human-like behavior controls.">
             <TyperIllustration />
           </Card>
         </div>
