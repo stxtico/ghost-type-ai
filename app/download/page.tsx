@@ -27,7 +27,7 @@ export default function DownloadPage() {
         {/* Download Buttons */}
         <div className="flex flex-col sm:flex-row gap-4">
           <a
-            href="/downloads/GhostTyper-Setup.exe"
+            href="https://github.com/stxtico/aai-web/releases/download/v1.0.0/Ghost.Typer.Setup.exe"
             className="rounded-2xl bg-white text-black px-6 py-3 text-sm font-semibold hover:opacity-90 transition"
           >
             Download for Windows
