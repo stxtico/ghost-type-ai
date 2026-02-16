@@ -84,6 +84,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
   // language dropdown state
   const [langOpen, setLangOpen] = useState(false);
 
+  function tr(key: string, fallback: string) {
+    const v = t(lang, key);
+    if (!v || v === key) return fallback;
+    return v;
+  }
+
   function applyUser(user: any | null) {
     const display =
       (user?.user_metadata?.full_name as string) ||
@@ -133,16 +139,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return () => unsub?.unsubscribe?.();
   }, []);
 
+  // ✅ Fix: "/" is landing, "/dashboard" is dashboard
   const headerTitle = useMemo(() => {
-    if (pathname === "/") return t(lang, "dashboard");
-    if (pathname.startsWith("/detect/text")) return t(lang, "textScan");
-    if (pathname.startsWith("/detect/image")) return t(lang, "imageScan");
-    if (pathname.startsWith("/scans/text")) return t(lang, "savedText");
-    if (pathname.startsWith("/scans/image")) return t(lang, "savedImage");
-    if (pathname.startsWith("/billing")) return t(lang, "billing");
-    if (pathname.startsWith("/download")) return t(lang, "download");
-    if (pathname.startsWith("/themes")) return t(lang, "themes");
-    if (pathname.startsWith("/account")) return t(lang, "account");
+    if (pathname === "/") return "Ghost Typer";
+    if (pathname === "/dashboard") return tr("dashboard", "Dashboard");
+
+    if (pathname.startsWith("/detect/text")) return tr("textScan", "Text Scan");
+    if (pathname.startsWith("/detect/image")) return tr("imageScan", "Image Scan");
+    if (pathname.startsWith("/scans/text")) return tr("savedText", "Saved Text");
+    if (pathname.startsWith("/scans/image")) return tr("savedImage", "Saved Images");
+    if (pathname.startsWith("/billing") || pathname.startsWith("/pricing")) return tr("billing", "Billing");
+    if (pathname.startsWith("/download")) return tr("download", "Download");
+    if (pathname.startsWith("/themes")) return tr("themes", "Themes");
+    if (pathname.startsWith("/account")) return tr("account", "Account");
+    if (pathname.startsWith("/featured")) return tr("featured", "Featured");
+
     return "Ghost Typer";
   }, [pathname, lang]);
 
@@ -152,16 +163,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
     else router.push(`/login?next=${encodeURIComponent("/account")}`);
   }
 
-  const showName = sessionReady ? (name || "Guest") : "Checking…";
+  const showName = sessionReady ? (name || tr("guest", "Guest")) : tr("checking", "Checking…");
 
   // token bar config by route
   const barConfig = useMemo(() => {
     const onText = pathname.startsWith("/detect/text") || pathname.startsWith("/scans/text");
     const onImage = pathname.startsWith("/detect/image") || pathname.startsWith("/scans/image");
-    if (onText) return { tool: "detect_text", label: "Text Detector Tokens", unit: "words" as Unit };
-    if (onImage) return { tool: "detect_image", label: "Image Detector Tokens", unit: "images" as Unit };
+    if (onText) return { tool: "detect_text", label: tr("textDetectorTokens", "Text Detector Tokens"), unit: "words" as Unit };
+    if (onImage) return { tool: "detect_image", label: tr("imageDetectorTokens", "Image Detector Tokens"), unit: "images" as Unit };
     return null;
-  }, [pathname]);
+  }, [pathname, lang]);
 
   // load token bar
   useEffect(() => {
@@ -220,12 +231,16 @@ export default function AppShell({ children }: { children: ReactNode }) {
     };
   }, [barConfig]);
 
+  const welcomeLabel = useMemo(() => {
+    return isAuthed ? tr("welcome", "Welcome") : tr("guest", "Guest");
+  }, [isAuthed, lang]);
+
   return (
     <div className="flex h-screen w-full bg-transparent text-white">
+      {/* ✅ FIX: Sidebar only takes pathname now */}
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* isolate + z-30 => dropdown won’t go behind anything */}
         <header className="isolate relative z-30 flex items-center justify-between border-b border-white/10 bg-black/40 px-6 py-4 backdrop-blur">
           <div className="flex items-baseline gap-3">
             <div className="text-lg font-semibold tracking-tight">{headerTitle}</div>
@@ -238,7 +253,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 type="button"
                 onClick={() => setLangOpen((v) => !v)}
                 className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/85 hover:bg-white/10"
-                title="Language"
+                title={tr("language", "Language")}
               >
                 <span className="opacity-80">🌐</span>
                 <span className="font-medium">{LANG_LABEL[lang]}</span>
@@ -271,11 +286,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <button
               onClick={goAccountOrLogin}
               className="group flex items-center gap-3"
-              title={isAuthed ? "Account" : "Log in"}
+              title={isAuthed ? tr("account", "Account") : tr("login", "Log in")}
               type="button"
             >
               <div className="text-right leading-tight">
-                <div className="text-xs text-white/55">{isAuthed ? "Welcome" : "Guest"}</div>
+                <div className="text-xs text-white/55">{welcomeLabel}</div>
                 <div className="text-sm font-medium text-white/90">{showName}</div>
               </div>
 

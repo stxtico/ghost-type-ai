@@ -1,3 +1,4 @@
+// app/_components/Sidebar.tsx
 "use client";
 
 import Link from "next/link";
@@ -11,10 +12,22 @@ function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
+function titleizeFromKey(key: string) {
+  // Turns "typerDownload" -> "Typer Download", "savedText" -> "Saved Text"
+  const spaced = key
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .trim();
+
+  return spaced
+    .split(/\s+/)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const { lang } = useLang();
-
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -29,7 +42,8 @@ export default function Sidebar() {
   }
 
   const sections = useMemo(() => {
-    const dashboard: Item[] = [{ href: "/", labelKey: "dashboard" }];
+    // ✅ Dashboard should go to /dashboard (not landing)
+    const dashboard: Item[] = [{ href: "/dashboard", labelKey: "dashboard" }];
 
     const text: Item[] = [
       { href: "/detect/text", labelKey: "newText" },
@@ -41,18 +55,17 @@ export default function Sidebar() {
       { href: "/scans/image", labelKey: "savedImage" },
     ];
 
-    const tools: Item[] = [{ href: "/download", labelKey: "download" }];
+    // ✅ Rename sidebar item to Typer Download
+    const tools: Item[] = [{ href: "/download", labelKey: "typerDownload" }];
 
-    // ✅ Themes page
     const themes: Item[] = [{ href: "/themes", labelKey: "themes" }];
-
     const billing: Item[] = [{ href: "/billing", labelKey: "billing" }];
 
     return { dashboard, text, image, tools, themes, billing };
   }, []);
 
   function isActive(href: string) {
-    if (href === "/") return pathname === "/";
+    if (href === "/dashboard") return pathname === "/dashboard";
     return pathname.startsWith(href);
   }
 
@@ -91,18 +104,12 @@ export default function Sidebar() {
 
         {/* Nav */}
         <nav className="flex-1 space-y-5 px-3 pb-6">
-          <Section
-            title={t(lang, "dashboard") ?? "Dashboard"}
-            items={sections.dashboard}
-            collapsed={collapsed}
-            lang={lang}
-            active={isActive}
-          />
+          <Section title={t(lang, "dashboard") ?? "Dashboard"} items={sections.dashboard} collapsed={collapsed} lang={lang} active={isActive} />
           <Section title="Text" items={sections.text} collapsed={collapsed} lang={lang} active={isActive} />
           <Section title="Image" items={sections.image} collapsed={collapsed} lang={lang} active={isActive} />
           <Section title={t(lang, "tools") ?? "Tools"} items={sections.tools} collapsed={collapsed} lang={lang} active={isActive} />
 
-          {/* ✅ Themes section */}
+          {/* Themes */}
           <Section title="Themes" items={sections.themes} collapsed={collapsed} lang={lang} active={isActive} />
 
           <Section title={t(lang, "billing") ?? "Billing"} items={sections.billing} collapsed={collapsed} lang={lang} active={isActive} />
@@ -124,9 +131,7 @@ export default function Sidebar() {
           </div>
         </nav>
 
-        <div className="px-4 pb-4 text-xs text-black/35 dark:text-white/35">
-          {collapsed ? "©" : "© 2026 Ghost Typer"}
-        </div>
+        <div className="px-4 pb-4 text-xs text-black/35 dark:text-white/35">{collapsed ? "©" : "© 2026 Ghost Typer"}</div>
       </div>
     </aside>
   );
@@ -145,16 +150,12 @@ function Section({
   lang: any;
   active: (href: string) => boolean;
 }) {
-  // ✅ Force a nice fallback label if translation key is missing
   function labelFor(key: string) {
     const translated = t(lang, key);
     if (translated && translated !== key) return translated;
 
-    if (key === "themes") return "Themes";
-    if (key === "tools") return "Tools";
-    if (key === "billing") return "Billing";
-    if (key === "account") return "Account";
-    return key.charAt(0).toUpperCase() + key.slice(1);
+    // ✅ If translation is missing, format camelCase nicely
+    return titleizeFromKey(key);
   }
 
   return (

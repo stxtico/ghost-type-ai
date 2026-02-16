@@ -44,6 +44,7 @@ const DICT: Record<Lang, Dict> = {
     savedImage: "Saved Image Scans",
     billing: "Billing",
     download: "Download",
+    typerDownload: "Typer Download",
     account: "Account",
     tools: "Tools",
   },
