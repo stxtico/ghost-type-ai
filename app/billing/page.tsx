@@ -1,4 +1,3 @@
-// app/billing/page.tsx
 "use client";
 
 import AppShell from "@/app/_components/AppShell";
@@ -63,67 +62,64 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [currentPlan, setCurrentPlan] = useState<PlanId>("free");
   const [error, setError] = useState<string | null>(null);
-
-  async function loadStatus() {
-    setLoading(true);
-    setError(null);
-
-    const { data: sess } = await supabase.auth.getSession();
-    const token = sess?.session?.access_token;
-
-    // not logged in = free
-    if (!token) {
-      setCurrentPlan("free");
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/stripe/status", {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const json = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(json?.error || "Failed to load billing status.");
-      }
-
-      const plan = (json?.plan as PlanId) ?? "free";
-      setCurrentPlan(plan);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load billing status.");
-      setCurrentPlan("free");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [busy, setBusy] = useState<null | "checkout" | "portal">(null);
 
   useEffect(() => {
     let alive = true;
 
-    (async () => {
-      await loadStatus();
-      if (!alive) return;
-    })();
+    async function load() {
+      setLoading(true);
+      setError(null);
 
+      const { data: userData, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !userData?.user) {
+        if (!alive) return;
+        setCurrentPlan("free");
+        setLoading(false);
+        return;
+      }
+
+      const uid = userData.user.id;
+
+      const { data: profile, error: profErr } = await supabase
+        .from("profiles")
+        .select("plan")
+        .eq("user_id", uid) // ✅ IMPORTANT
+        .maybeSingle();
+
+      if (!alive) return;
+
+      if (profErr) {
+        setError(profErr.message);
+        setCurrentPlan("free");
+      } else {
+        const p = (profile?.plan as PlanId | null) ?? "free";
+        setCurrentPlan(p);
+      }
+
+      setLoading(false);
+    }
+
+    load();
     return () => {
       alive = false;
     };
   }, []);
 
+  async function getTokenOrThrow() {
+    const { data: sessionData, error: sessErr } = await supabase.auth.getSession();
+    const token = sessionData?.session?.access_token;
+
+    if (sessErr || !token) throw new Error("Missing auth");
+    return token;
+  }
+
   async function startCheckout(planId: PlanId) {
     try {
       setError(null);
+      setBusy("checkout");
 
-      if (planId === "free") return;
-
-      const { data: sessionData, error: sessErr } =
-        await supabase.auth.getSession();
-      const token = sessionData?.session?.access_token;
-
-      if (sessErr || !token) throw new Error("Missing auth");
+      const token = await getTokenOrThrow();
 
       const res = await fetch("/api/stripe/checkout", {
         method: "POST",
@@ -141,8 +137,38 @@ export default function BillingPage() {
       else throw new Error("Checkout did not return a redirect URL.");
     } catch (e: any) {
       setError(e?.message || "Checkout failed.");
+    } finally {
+      setBusy(null);
     }
   }
+
+  async function openCustomerPortal() {
+    try {
+      setError(null);
+      setBusy("portal");
+
+      const token = await getTokenOrThrow();
+
+      const res = await fetch("/api/stripe/portal", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Failed to open billing portal.");
+
+      if (json?.url) window.location.href = json.url;
+      else throw new Error("Portal did not return a redirect URL.");
+    } catch (e: any) {
+      setError(e?.message || "Failed to open billing portal.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const currentIsPaid = currentPlan !== "free";
 
   return (
     <AppShell>
@@ -150,9 +176,21 @@ export default function BillingPage() {
         <div className="mb-6">
           <div className="text-2xl font-semibold tracking-tight">Billing</div>
           <div className="mt-1 text-sm text-black/60 dark:text-white/60">
-            Choose a plan that fits your usage. Tokens and image checks reset
-            monthly.
+            Choose a plan that fits your usage. Tokens and image checks reset monthly.
           </div>
+
+          {/* ✅ Cancel/Manage button for paid users */}
+          {!loading && currentIsPaid && (
+            <div className="mt-4">
+              <button
+                onClick={openCustomerPortal}
+                disabled={busy !== null}
+                className="rounded-2xl border border-black/10 bg-black/5 px-4 py-2 text-sm font-semibold text-black/80 hover:bg-black/10 disabled:opacity-60 dark:border-white/10 dark:bg-white/5 dark:text-white/80 dark:hover:bg-white/10"
+              >
+                {busy === "portal" ? "Opening Stripe…" : "Manage / Cancel subscription"}
+              </button>
+            </div>
+          )}
         </div>
 
         {error && (
@@ -181,9 +219,7 @@ export default function BillingPage() {
                     <div className="text-sm font-semibold tracking-tight text-black/90 dark:text-white/90">
                       {p.name}
                     </div>
-                    <div className="mt-1 text-xs text-black/60 dark:text-white/60">
-                      {p.description}
-                    </div>
+                    <div className="mt-1 text-xs text-black/60 dark:text-white/60">{p.description}</div>
                   </div>
 
                   {isCurrent && (
@@ -200,15 +236,11 @@ export default function BillingPage() {
                 <div className="mt-4 space-y-2 text-sm text-black/70 dark:text-white/70">
                   <div className="flex items-center justify-between">
                     <span>Tokens / month</span>
-                    <span className="font-semibold">
-                      {p.tokensPerMonth.toLocaleString()}
-                    </span>
+                    <span className="font-semibold">{p.tokensPerMonth.toLocaleString()}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Image checks / month</span>
-                    <span className="font-semibold">
-                      {p.imageChecksPerMonth.toLocaleString()}
-                    </span>
+                    <span className="font-semibold">{p.imageChecksPerMonth.toLocaleString()}</span>
                   </div>
                 </div>
 
@@ -230,9 +262,10 @@ export default function BillingPage() {
                   ) : p.isPaid ? (
                     <button
                       onClick={() => startCheckout(p.id)}
-                      className="w-full rounded-2xl bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-90 dark:bg-white dark:text-black"
+                      disabled={busy !== null}
+                      className="w-full rounded-2xl bg-black px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 dark:bg-white dark:text-black"
                     >
-                      Subscribe
+                      {busy === "checkout" ? "Redirecting…" : "Subscribe"}
                     </button>
                   ) : (
                     <button
@@ -240,7 +273,7 @@ export default function BillingPage() {
                       className="w-full rounded-2xl border border-black/10 bg-black/5 px-4 py-2 text-sm text-black/60 dark:border-white/10 dark:bg-white/10 dark:text-white/60"
                       title="Free plan is applied automatically when no subscription is active."
                     >
-                      Free plan
+                      Switch to Free (auto)
                     </button>
                   )}
                 </div>
