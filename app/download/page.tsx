@@ -17,12 +17,18 @@ export default function DownloadPage() {
           </p>
         </div>
 
-        {/* Single Placeholder Video */}
-        <div className="w-full max-w-4xl mb-10">
-          <div className="aspect-video w-full rounded-3xl border border-white/10 bg-black/40 flex items-center justify-center text-white/40 text-lg backdrop-blur">
-            Typer Demo Video Placeholder
-          </div>
-        </div>
+        <div className="w-full max-w-5xl mb-10">
+  <div className="aspect-video w-full overflow-hidden rounded-3xl border border-white/10 bg-black backdrop-blur">
+    <video
+      src="/videos/Project - Made with Clipchamp.mp4"
+      autoPlay
+      loop
+      muted
+      playsInline
+      className="h-full w-full object-cover"
+    />
+  </div>
+</div>
 
         {/* Download Buttons */}
         <div className="flex flex-col sm:flex-row gap-4">

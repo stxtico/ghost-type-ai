@@ -115,26 +115,6 @@ export default function FeaturedPage() {
           </p>
         </div>
 
-        {/* Big video placeholder (looping) */}
-        <div className="mb-8 rounded-3xl border border-white/10 bg-white/5 p-3 md:p-4">
-          <div className="relative aspect-video overflow-hidden rounded-2xl bg-linear-to-b from-white/10 to-white/0">
-            <div className="absolute inset-0">
-              <div className="gt-loop absolute inset-0 opacity-40" />
-              <div className="absolute inset-0 bg-linear-to-t from-black/55 to-transparent" />
-            </div>
-
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center">
-                <div className="text-base font-semibold text-white/90">
-                  Featured video placeholder
-                </div>
-                <div className="mt-1 text-xs text-white/55">
-                  (Later: your looping product demo)
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* 3 tools */}
         <div className="grid gap-4 md:grid-cols-3">
