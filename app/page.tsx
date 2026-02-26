@@ -1,10 +1,11 @@
 // app/page.tsx
 "use client";
+
 import Link from "next/link";
 import Image from "next/image";
-import React from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useEffect, useState } from "react";
+
 function GhostMark({ className }: { className?: string }) {
   return (
     <Image
@@ -19,6 +20,30 @@ function GhostMark({ className }: { className?: string }) {
 }
 
 export default function LandingPage() {
+  const [isAuthed, setIsAuthed] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
+      setIsAuthed(!!data.session);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_evt, session) => {
+      setIsAuthed(!!session);
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  const ctaHref = isAuthed ? "/dashboard" : "/login?next=/dashboard";
+  const ctaLabel = isAuthed ? "Go to Dashboard →" : "Get Started →";
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Top bar */}
@@ -44,19 +69,13 @@ export default function LandingPage() {
             </Link>
           </nav>
 
+          {/* ✅ Only ONE button now */}
           <div className="flex items-center gap-2">
             <Link
-              href="/login?next=/dashboard"
-              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 hover:bg-white/10"
-            >
-              Sign in
-            </Link>
-
-            <Link
-              href="/login?next=/dashboard"
+              href={ctaHref}
               className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black hover:opacity-90"
             >
-              Get Started →
+              {ctaLabel}
             </Link>
           </div>
         </div>
@@ -85,10 +104,10 @@ export default function LandingPage() {
 
             <div className="mt-6 flex flex-wrap justify-center gap-3">
               <Link
-                href="/login?next=/dashboard"
+                href={ctaHref}
                 className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black hover:opacity-90"
               >
-                Get Started →
+                {ctaLabel}
               </Link>
 
               <Link
@@ -107,59 +126,21 @@ export default function LandingPage() {
             </div>
           </div>
 
-          {/* BIG centered video placeholder */}
+          {/* ✅ Clean video block */}
           <div className="mx-auto mt-10 max-w-5xl">
             <div className="rounded-3xl border border-white/10 bg-white/5 p-3 md:p-4">
-              <div className="relative aspect-video overflow-hidden rounded-2xl bg-linear-to-b from-white/10 to-white/0">
-                {/* Looping placeholder "video" */}
-                <div className="absolute inset-0">
-                  <div className="gt-loop absolute inset-0 opacity-40" />
-                  <div className="absolute inset-0 bg-linear-to-t from-black/55 to-transparent" />
-                </div>
-
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="w-full max-w-5xl mb-10">
-  <div className="aspect-video w-full overflow-hidden rounded-3xl border border-white/10 bg-black backdrop-blur">
-    <video
-      src="/videos/Project - Made with Clipchamp.mp4"
-      autoPlay
-      loop
-      muted
-      playsInline
-      className="h-full w-full object-cover"
-    />
-  </div>
-</div>
-                    <div className="mt-1 text-xs text-white/55">
-                     
-                    </div>
-                  </div>
-                </div>
+              <div className="aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black backdrop-blur">
+                <video
+                  src="/videos/Project - Made with Clipchamp.mp4"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  className="h-full w-full object-cover"
+                />
               </div>
             </div>
           </div>
-
-          <style jsx>{`
-            .gt-loop {
-              background: linear-gradient(
-                90deg,
-                rgba(255, 255, 255, 0.02),
-                rgba(255, 255, 255, 0.06),
-                rgba(255, 255, 255, 0.02)
-              );
-              background-size: 200% 100%;
-              animation: gtLoop 2.2s linear infinite;
-            }
-            @keyframes gtLoop {
-              0% {
-                background-position: 0% 0%;
-              }
-              100% {
-                background-position: 200% 0%;
-              }
-            }
-          `}</style>
         </section>
       </main>
 

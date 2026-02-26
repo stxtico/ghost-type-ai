@@ -1,3 +1,4 @@
+// app/login/LoginClient.tsx
 "use client";
 
 import Link from "next/link";
@@ -5,11 +6,42 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+function safeNext(raw: string | null) {
+  if (!raw) return null;
+  if (!raw.startsWith("/")) return null;
+  if (raw.startsWith("//")) return null;
+  if (raw.startsWith("/login")) return null;
+  return raw;
+}
+
+function GoogleIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" className="h-5 w-5">
+      <path
+        fill="#EA4335"
+        d="M24 9.5c3.2 0 6.1 1.1 8.3 3.2l6.2-6.2C34.6 2.3 29.6 0 24 0 14.6 0 6.5 5.5 2.5 13.4l7.2 5.6C11.6 13.3 17.2 9.5 24 9.5z"
+      />
+      <path
+        fill="#4285F4"
+        d="M46.5 24.5c0-1.7-.1-2.9-.4-4.2H24v8h12.7c-.3 2-1.7 5-4.8 7l7.4 5.8c4.3-4 6.8-9.8 6.8-16.6z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M9.7 28.9c-1-2.9-1-6 0-8.9l-7.2-5.6C.9 17.5 0 20.6 0 24c0 3.4.9 6.5 2.5 9.6l7.2-5.6z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 48c6.5 0 12-2.1 16-5.8l-7.4-5.8c-2 1.4-4.7 2.4-8.6 2.4-6.8 0-12.4-3.8-14.4-9.5l-7.2 5.6C6.5 42.5 14.6 48 24 48z"
+      />
+    </svg>
+  );
+}
+
 export default function LoginClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const sp = useSearchParams();
 
-  const nextUrl = searchParams.get("next") || "/"; // default to dashboard
+  const next = safeNext(sp.get("next")) || "/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -38,7 +70,7 @@ export default function LoginClient() {
       return;
     }
 
-    router.replace(nextUrl);
+    router.replace(next);
   }
 
   async function signUp() {
@@ -68,26 +100,25 @@ export default function LoginClient() {
     setMsg(null);
     setOauthLoading(true);
 
-    // IMPORTANT: redirect back to a real page on your domain, NOT /account hardcoded.
-    // We send to /auth/callback and then that page will route to `next`.
+    // ✅ Preserve next through OAuth redirect
+    const redirectTo = `${window.location.origin}/login?next=${encodeURIComponent(next)}`;
+
     const { error } = await supabase.auth.signInWithOAuth({
-  provider: "google",
-  options: {
-    redirectTo: window.location.origin,
-  },
-});
+      provider: "google",
+      options: { redirectTo },
+    });
 
     setOauthLoading(false);
     if (error) setMsg(error.message);
   }
 
   return (
-    <main className="relative min-h-screen bg-black text-white flex items-center justify-center p-6">
+    <main className="relative flex min-h-screen items-center justify-center bg-black p-6 text-white">
       <Link
         href="/"
         className="absolute right-6 top-6 rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
         aria-label="Close login"
-        title="Back to Dashboard"
+        title="Back to Landing"
       >
         ✕
       </Link>
@@ -99,8 +130,9 @@ export default function LoginClient() {
         <button
           onClick={signInWithGoogle}
           disabled={oauthLoading || loading}
-          className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/90 hover:bg-white/10 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-3 rounded-xl border border-white/10 bg-white px-4 py-3 text-sm font-semibold text-black hover:bg-white/90 disabled:opacity-60"
         >
+          <GoogleIcon />
           {oauthLoading ? "Connecting…" : "Continue with Google"}
         </button>
 
